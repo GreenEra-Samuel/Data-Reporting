@@ -17,9 +17,14 @@ class SetupTab(widgets.DeferredRefresh, ttk.Frame):
 
         ttk.Label(
             self,
-            text="Set up your locations and tests once - the entry screen is built from them.",
+            text="Set up your locations and tests once - the entry screen is built from them.  "
+                 "Ctrl-click or Shift-click to pick several at a time, then Delete.",
             style="Muted.TLabel",
         ).pack(anchor="w", pady=(0, 10))
+
+        # Packed before the panels so it keeps its row on a short window; the
+        # panels then expand into whatever is left rather than over the top of it.
+        self._build_preferences()
 
         columns = ttk.Frame(self)
         columns.pack(fill="both", expand=True)
@@ -30,7 +35,6 @@ class SetupTab(widgets.DeferredRefresh, ttk.Frame):
 
         self._build_locations(columns)
         self._build_tests(columns)
-        self._build_preferences()
         self.reload()
 
         # Reading counts shown here change as data is entered on other tabs.
@@ -46,7 +50,7 @@ class SetupTab(widgets.DeferredRefresh, ttk.Frame):
 
         self.location_tree = ttk.Treeview(
             box, columns=("name", "code", "active", "readings"), show="headings",
-            selectmode="browse", height=12,
+            selectmode="extended", height=10,
         )
         for key, (title, width, anchor) in {
             "name": ("Location", 150, "w"), "code": ("Code", 60, "center"),
@@ -56,15 +60,21 @@ class SetupTab(widgets.DeferredRefresh, ttk.Frame):
             self.location_tree.column(key, width=width, anchor=anchor)
         self.location_tree.pack(fill="both", expand=True)
         self.location_tree.bind("<Double-1>", lambda _e: self.edit_location())
+        self.location_tree.bind("<Delete>", lambda _e: self.delete_location())
+        self.location_tree.bind("<Control-a>", lambda _e: self._select_all(self.location_tree))
+        self.location_tree.bind("<Control-A>", lambda _e: self._select_all(self.location_tree))
+
+        primary = ttk.Frame(box)
+        primary.pack(fill="x", pady=(8, 0))
+        ttk.Button(primary, text="Add location…", style="Accent.TButton",
+                   command=self.add_location).pack(side="left")
 
         bar = ttk.Frame(box)
-        bar.pack(fill="x", pady=(8, 0))
-        ttk.Button(bar, text="Add", style="Compact.TButton",
-                   command=self.add_location).pack(side="left")
+        bar.pack(fill="x", pady=(6, 0))
         ttk.Button(bar, text="Edit", style="Compact.TButton",
-                   command=self.edit_location).pack(side="left", padx=4)
+                   command=self.edit_location).pack(side="left")
         ttk.Button(bar, text="▲", width=3,
-                   command=lambda: self.move_location(-1)).pack(side="left")
+                   command=lambda: self.move_location(-1)).pack(side="left", padx=(4, 0))
         ttk.Button(bar, text="▼", width=3,
                    command=lambda: self.move_location(1)).pack(side="left", padx=(2, 4))
         ttk.Button(bar, text="Delete", style="Compact.TButton",
@@ -78,7 +88,7 @@ class SetupTab(widgets.DeferredRefresh, ttk.Frame):
 
         columns = ("name", "unit", "reps", "rsd", "limits", "active", "readings")
         self.test_tree = ttk.Treeview(box, columns=columns, show="headings",
-                                      selectmode="browse", height=12)
+                                      selectmode="extended", height=10)
         for key, (title, width, anchor) in {
             "name": ("Test", 175, "w"), "unit": ("Unit", 102, "center"),
             "reps": ("Reps", 50, "center"), "rsd": ("%RSD", 55, "center"),
@@ -91,6 +101,9 @@ class SetupTab(widgets.DeferredRefresh, ttk.Frame):
                                   stretch=(key == "name"), minwidth=width)
         self.test_tree.pack(fill="both", expand=True)
         self.test_tree.bind("<Double-1>", lambda _e: self.edit_test())
+        self.test_tree.bind("<Delete>", lambda _e: self.delete_test())
+        self.test_tree.bind("<Control-a>", lambda _e: self._select_all(self.test_tree))
+        self.test_tree.bind("<Control-A>", lambda _e: self._select_all(self.test_tree))
 
         primary = ttk.Frame(box)
         primary.pack(fill="x", pady=(8, 0))
@@ -122,7 +135,7 @@ class SetupTab(widgets.DeferredRefresh, ttk.Frame):
 
     def _build_preferences(self) -> None:
         box = ttk.Labelframe(self, text="Preferences", padding=10)
-        box.pack(fill="x", pady=(12, 0))
+        box.pack(side="bottom", fill="x", pady=(12, 0))
 
         row = ttk.Frame(box)
         row.pack(fill="x")
@@ -189,9 +202,107 @@ class SetupTab(widgets.DeferredRefresh, ttk.Frame):
     def refresh_now(self) -> None:
         self.reload()
 
-    def _selected(self, tree: ttk.Treeview) -> int | None:
-        selection = tree.selection()
-        return int(selection[0]) if selection else None
+    def _selected_ids(self, tree: ttk.Treeview) -> list[int]:
+        """Every selected row, in the order the list shows them."""
+        selected = {int(item) for item in tree.selection()}
+        return [int(item) for item in tree.get_children() if int(item) in selected]
+
+    def _require_one(self, tree: ttk.Treeview, noun: str) -> int | None:
+        """For actions that only make sense on a single row."""
+        ids = self._selected_ids(tree)
+        if not ids:
+            messagebox.showinfo(f"Pick a {noun}", f"Select a {noun} in the list first.",
+                                parent=self)
+            return None
+        if len(ids) > 1:
+            messagebox.showinfo(
+                "One at a time",
+                f"{len(ids)} {noun}s are selected. This works on one {noun} at a time - "
+                f"click a single {noun} and try again.",
+                parent=self,
+            )
+            return None
+        return ids[0]
+
+    def _select_all(self, tree: ttk.Treeview) -> str:
+        tree.selection_set(tree.get_children())
+        return "break"
+
+    @staticmethod
+    def _bullets(names: list[str], limit: int = 12) -> str:
+        shown = [f"\u2022 {name}" for name in names[:limit]]
+        if len(names) > limit:
+            shown.append(f"\u2022 ...and {len(names) - limit} more")
+        return "\n".join(shown)
+
+    def _delete_selection(self, tree: ttk.Treeview, noun: str, fetch, count_for,
+                          save, delete) -> None:
+        """Delete every selected row, protecting anything that holds readings.
+
+        Rows with readings can be hidden from the entry screen instead of
+        deleted, which keeps their measurements in the exports.
+        """
+        ids = self._selected_ids(tree)
+        if not ids:
+            messagebox.showinfo(f"Pick a {noun}", f"Select one or more {noun}s first.",
+                                parent=self)
+            return
+
+        items = [fetch(item_id) for item_id in ids]
+        counts = {item.id: count_for(item.id) for item in items}
+        with_data = [item for item in items if counts[item.id]]
+        empty = [item for item in items if not counts[item.id]]
+        total = sum(counts.values())
+
+        if not with_data:
+            listing = self._bullets([item.name for item in items])
+            if not messagebox.askyesno(
+                f"Delete {noun}s" if len(items) > 1 else f"Delete {noun}",
+                f"Delete {self._count_phrase(len(items), noun)}?\n\n{listing}\n\n"
+                "No readings have been recorded against "
+                f"{'them' if len(items) > 1 else 'it'}.",
+                parent=self,
+            ):
+                return
+            for item in items:
+                delete(item.id)
+            self._announce()
+            return
+
+        listing = self._bullets(
+            [f"{item.name} ({counts[item.id]} reading(s))" for item in with_data])
+        keep_clause = (
+            f"Yes - hide {'them' if len(with_data) > 1 else 'it'} from the entry screen "
+            "and keep the readings (recommended)"
+        )
+        if empty:
+            keep_clause += f", and delete the {self._count_phrase(len(empty), noun)} with none"
+        message = (
+            f"{self._count_phrase(len(with_data), noun)} of the {len(items)} selected "
+            f"hold readings - {total} in total:\n\n{listing}\n\n"
+            f"{keep_clause}.\n"
+            f"No - delete everything selected, readings included. This cannot be undone.\n"
+            "Cancel - leave things as they are."
+        )
+
+        choice = messagebox.askyesnocancel(f"{noun.capitalize()}s hold readings", message,
+                                           parent=self)
+        if choice is None:
+            return
+        if choice:
+            for item in with_data:
+                item.active = False
+                save(item)
+            for item in empty:
+                delete(item.id)
+        else:
+            for item in items:
+                delete(item.id)
+        self._announce()
+
+    @staticmethod
+    def _count_phrase(count: int, noun: str) -> str:
+        return f"1 {noun}" if count == 1 else f"{count} {noun}s"
 
     def _announce(self) -> None:
         """Tell the rest of the app; our own subscription refreshes this tab."""
@@ -212,9 +323,8 @@ class SetupTab(widgets.DeferredRefresh, ttk.Frame):
         self._announce()
 
     def edit_location(self) -> None:
-        location_id = self._selected(self.location_tree)
+        location_id = self._require_one(self.location_tree, "location")
         if location_id is None:
-            messagebox.showinfo("Pick a location", "Select a location first.", parent=self)
             return
         location = LocationDialog(self, self.db.get_location(location_id)).show()
         if location is None:
@@ -228,7 +338,7 @@ class SetupTab(widgets.DeferredRefresh, ttk.Frame):
         self._announce()
 
     def move_location(self, delta: int) -> None:
-        location_id = self._selected(self.location_tree)
+        location_id = self._require_one(self.location_tree, "location")
         if location_id is None:
             return
         self.db.move_location(location_id, delta)
@@ -236,30 +346,13 @@ class SetupTab(widgets.DeferredRefresh, ttk.Frame):
         self.location_tree.selection_set(str(location_id))
 
     def delete_location(self) -> None:
-        location_id = self._selected(self.location_tree)
-        if location_id is None:
-            return
-        location = self.db.get_location(location_id)
-        count = self.db.count_values(location_id=location_id)
-        if count:
-            choice = messagebox.askyesnocancel(
-                "Location has readings",
-                f"{location.name} has {count} reading(s) recorded.\n\n"
-                "Yes - hide it from the entry screen but keep the readings (recommended).\n"
-                "No  - delete the location and all of its readings permanently.",
-                parent=self,
-            )
-            if choice is None:
-                return
-            if choice:
-                location.active = False
-                self.db.save_location(location)
-                self._announce()
-                return
-        elif not messagebox.askyesno("Delete location", f"Delete {location.name}?", parent=self):
-            return
-        self.db.delete_location(location_id)
-        self._announce()
+        self._delete_selection(
+            self.location_tree, "location",
+            fetch=self.db.get_location,
+            count_for=lambda location_id: self.db.count_values(location_id=location_id),
+            save=self.db.save_location,
+            delete=self.db.delete_location,
+        )
 
     # ---------------------------------------------------------- test actions
 
@@ -302,9 +395,8 @@ class SetupTab(widgets.DeferredRefresh, ttk.Frame):
         self._announce()
 
     def edit_test(self) -> None:
-        test_id = self._selected(self.test_tree)
+        test_id = self._require_one(self.test_tree, "test")
         if test_id is None:
-            messagebox.showinfo("Pick a test", "Select a test first.", parent=self)
             return
         test = TestDialog(self, self.db.get_test(test_id), self.app.default_replicates).show()
         if test is None:
@@ -317,7 +409,7 @@ class SetupTab(widgets.DeferredRefresh, ttk.Frame):
         self._announce()
 
     def duplicate_test(self) -> None:
-        test_id = self._selected(self.test_tree)
+        test_id = self._require_one(self.test_tree, "test")
         if test_id is None:
             return
         source = self.db.get_test(test_id)
@@ -336,7 +428,7 @@ class SetupTab(widgets.DeferredRefresh, ttk.Frame):
         self._announce()
 
     def move_test(self, delta: int) -> None:
-        test_id = self._selected(self.test_tree)
+        test_id = self._require_one(self.test_tree, "test")
         if test_id is None:
             return
         self.db.move_test(test_id, delta)
@@ -344,30 +436,13 @@ class SetupTab(widgets.DeferredRefresh, ttk.Frame):
         self.test_tree.selection_set(str(test_id))
 
     def delete_test(self) -> None:
-        test_id = self._selected(self.test_tree)
-        if test_id is None:
-            return
-        test = self.db.get_test(test_id)
-        count = self.db.count_values(test_id=test_id)
-        if count:
-            choice = messagebox.askyesnocancel(
-                "Test has readings",
-                f"{test.name} has {count} reading(s) recorded.\n\n"
-                "Yes - hide it from the entry screen but keep the readings (recommended).\n"
-                "No  - delete the test and all of its readings permanently.",
-                parent=self,
-            )
-            if choice is None:
-                return
-            if choice:
-                test.active = False
-                self.db.save_test(test)
-                self._announce()
-                return
-        elif not messagebox.askyesno("Delete test", f"Delete {test.name}?", parent=self):
-            return
-        self.db.delete_test(test_id)
-        self._announce()
+        self._delete_selection(
+            self.test_tree, "test",
+            fetch=self.db.get_test,
+            count_for=lambda test_id: self.db.count_values(test_id=test_id),
+            save=self.db.save_test,
+            delete=self.db.delete_test,
+        )
 
     # -------------------------------------------------------------- helpers
 

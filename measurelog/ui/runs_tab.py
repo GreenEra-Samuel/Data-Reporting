@@ -42,11 +42,19 @@ class RunsTab(widgets.DeferredRefresh, ttk.Frame):
         self.search_var.trace_add("write", lambda *_: self._populate())
 
     def _build_table(self) -> None:
+        ttk.Label(
+            self,
+            text="Double-click a run to open it for entry.  Ctrl-click or Shift-click to pick "
+                 "several at a time, then Delete.",
+            style="Muted.TLabel",
+        ).pack(fill="x", pady=(0, 6))
+
         holder = ttk.Frame(self)
         holder.pack(fill="both", expand=True)
 
         columns = ("date", "time", "label", "operator", "values", "notes")
-        self.tree = ttk.Treeview(holder, columns=columns, show="headings", selectmode="browse")
+        self.tree = ttk.Treeview(holder, columns=columns, show="headings",
+                                 selectmode="extended")
         headings = {
             "date": ("Date", 110), "time": ("Time", 70), "label": ("Run", 150),
             "operator": ("Operator", 130), "values": ("Readings", 90), "notes": ("Notes", 320),
@@ -66,6 +74,8 @@ class RunsTab(widgets.DeferredRefresh, ttk.Frame):
         self.tree.bind("<Double-1>", lambda _e: self.open_selected())
         self.tree.bind("<Return>", lambda _e: self.open_selected())
         self.tree.bind("<Delete>", lambda _e: self.delete_selected())
+        self.tree.bind("<Control-a>", lambda _e: self._select_all())
+        self.tree.bind("<Control-A>", lambda _e: self._select_all())
 
     # ---------------------------------------------------------------- data
 
@@ -103,9 +113,34 @@ class RunsTab(widgets.DeferredRefresh, ttk.Frame):
         if current is not None and self.tree.exists(str(current)):
             self.tree.selection_set(str(current))
 
+    def selected_run_ids(self) -> list[int]:
+        """Every selected run, in the order the list shows them."""
+        selected = {int(item) for item in self.tree.selection()}
+        return [int(item) for item in self.tree.get_children() if int(item) in selected]
+
     def selected_run_id(self) -> int | None:
-        selection = self.tree.selection()
-        return int(selection[0]) if selection else None
+        """The selected run, when exactly one is selected."""
+        ids = self.selected_run_ids()
+        return ids[0] if len(ids) == 1 else None
+
+    def _require_one(self) -> int | None:
+        ids = self.selected_run_ids()
+        if not ids:
+            messagebox.showinfo("Pick a run", "Select a run in the list first.", parent=self)
+            return None
+        if len(ids) > 1:
+            messagebox.showinfo(
+                "One at a time",
+                f"{len(ids)} runs are selected. This works on one run at a time - "
+                "click a single run and try again.",
+                parent=self,
+            )
+            return None
+        return ids[0]
+
+    def _select_all(self) -> str:
+        self.tree.selection_set(self.tree.get_children())
+        return "break"
 
     # ------------------------------------------------------------- actions
 
@@ -126,7 +161,7 @@ class RunsTab(widgets.DeferredRefresh, ttk.Frame):
         self.app.show_entry_tab()
 
     def open_selected(self) -> None:
-        run_id = self.selected_run_id()
+        run_id = self._require_one()
         if run_id is None:
             return
         self.app.current_run_id = run_id
@@ -134,9 +169,8 @@ class RunsTab(widgets.DeferredRefresh, ttk.Frame):
         self.app.show_entry_tab()
 
     def edit_selected(self) -> None:
-        run_id = self.selected_run_id()
+        run_id = self._require_one()
         if run_id is None:
-            messagebox.showinfo("Pick a run", "Select a run in the list first.", parent=self)
             return
         run = self.db.get_run(run_id)
         updated = RunDialog(self, run).show()
@@ -146,9 +180,8 @@ class RunsTab(widgets.DeferredRefresh, ttk.Frame):
         self.app.notify("runs_changed", source=self)
 
     def duplicate_selected(self) -> None:
-        run_id = self.selected_run_id()
+        run_id = self._require_one()
         if run_id is None:
-            messagebox.showinfo("Pick a run", "Select a run in the list first.", parent=self)
             return
         source = self.db.get_run(run_id)
         template = RunDialog(self, None, default_operator=source.operator,
@@ -163,19 +196,33 @@ class RunsTab(widgets.DeferredRefresh, ttk.Frame):
         self.app.notify("runs_changed", source=self)
 
     def delete_selected(self) -> None:
-        run_id = self.selected_run_id()
-        if run_id is None:
+        """Delete every selected run, and the readings recorded against them."""
+        run_ids = self.selected_run_ids()
+        if not run_ids:
+            messagebox.showinfo("Pick a run", "Select one or more runs first.", parent=self)
             return
-        run = self.db.get_run(run_id)
-        count = self.db.count_values(run_id=run_id)
+
+        runs = [self.db.get_run(run_id) for run_id in run_ids]
+        total = sum(self.db.count_values(run_id=run_id) for run_id in run_ids)
+
+        if len(runs) == 1:
+            question = f"Delete the run on {runs[0].display}?"
+        else:
+            listing = [f"\u2022 {run.display}" for run in runs[:12]]
+            if len(runs) > 12:
+                listing.append(f"\u2022 ...and {len(runs) - 12} more")
+            question = f"Delete these {len(runs)} runs?\n\n" + "\n".join(listing)
+
         if not messagebox.askyesno(
-            "Delete run",
-            f"Delete the run on {run.display}?\n\n"
-            f"{count} reading(s) will be deleted. This cannot be undone.",
+            "Delete run" if len(runs) == 1 else "Delete runs",
+            f"{question}\n\n"
+            f"{total} reading(s) will be deleted. This cannot be undone.",
             parent=self,
         ):
             return
-        self.db.delete_run(run_id)
-        if self.app.current_run_id == run_id:
+
+        for run_id in run_ids:
+            self.db.delete_run(run_id)
+        if self.app.current_run_id in run_ids:
             self.app.current_run_id = None
         self.app.notify("runs_changed", source=self)

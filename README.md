@@ -37,6 +37,7 @@ git tag, or one double-click on Windows.
 | **Tests** | Up to 20 or well beyond. Each has its own unit, decimal places, replicate count and acceptable range. Anything not in the SOPs is added by hand. |
 | **Replicates** | Per test, so triplicate pH can sit next to a single-reading temperature. |
 | **Runs** | One round of measurements. Repeat a round with one click and the app numbers them Round 1, Round 2, … through the day. |
+| **Tidying up** | Ctrl-click or Shift-click to select several tests, locations or runs, then Delete. Anything holding readings can be hidden instead of deleted, so your records stay intact. |
 | **Live statistics** | Mean, standard deviation and %RSD appear as you type, per test, per location. |
 | **Range checks** | Readings outside a test's acceptable range turn red immediately — not after you export. |
 | **Spread check** | If your replicates disagree more than a threshold you set, the row says *Check spread*. Tests can carry their own limit — pH uses the 2% RSD its SOP requires — and anything without one falls back to the app-wide setting. |
@@ -74,6 +75,16 @@ git tag, or one double-click on Windows.
 
 5. **Export tab** — pick a date range and write an Excel workbook or CSV files.
 
+### Tidying up
+
+On the **Setup** and **Runs** lists, Ctrl-click or Shift-click picks several rows
+at once (Ctrl+A selects all), and **Delete** removes them together.
+
+Nothing disappears silently. Deleting tests or locations that already hold
+readings offers to hide them from the entry screen instead — they stop cluttering
+your grid but their measurements stay in the exports. The confirmation always
+says how many readings are at stake before you commit.
+
 ### Keyboard
 
 | Key | Does |
@@ -86,6 +97,7 @@ git tag, or one double-click on Windows.
 | `Ctrl+N` | New run |
 | `F1` | Quick start |
 | Right-click a cell | Add a note, clear the cell, clear the row |
+| `Ctrl+A`, `Delete` | In the Setup and Runs lists: select all, delete the selection |
 
 ---
 
