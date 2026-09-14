@@ -31,7 +31,24 @@ class SetupTests(DatabaseTestCase):
     def test_seed_defaults_only_runs_on_an_empty_database(self):
         self.assertTrue(self.db.seed_defaults())
         self.assertFalse(self.db.seed_defaults())
-        self.assertEqual(len(self.db.list_locations()), 3)
+        self.assertEqual(len(self.db.list_locations()), 4)
+
+    def test_seed_uses_the_sampling_points_from_the_sops(self):
+        self.db.seed_defaults()
+        self.assertEqual(
+            [location.name for location in self.db.list_locations()],
+            ["Influent", "Digester 1", "Digester 2", "Effluent"],
+        )
+
+    def test_seed_creates_no_placeholder_tests(self):
+        # The SOP library is a better first step than deleting invented tests.
+        self.db.seed_defaults()
+        self.assertEqual(self.db.list_tests(), [])
+
+    def test_seed_is_skipped_when_tests_already_exist(self):
+        self.db.save_test(Test(name="Only test"))
+        self.assertFalse(self.db.seed_defaults())
+        self.assertEqual(self.db.list_locations(), [])
 
     def test_duplicate_names_are_rejected(self):
         self.db.save_location(Location(name="Tank A"))

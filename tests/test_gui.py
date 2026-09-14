@@ -99,6 +99,12 @@ class AppTests(unittest.TestCase):
         self.type_into(self.tests[0], 1, "7.01")
         self.assertEqual(self.app.db.count_values(run_id=self.run.id), 1)
 
+    def test_the_header_count_keeps_up_with_typing(self):
+        self.assertIn("0 values recorded", self.entry.run_info.cget("text"))
+        self.type_into(self.tests[0], 1, "7.01")
+        self.type_into(self.tests[0], 2, "7.03")
+        self.assertIn("2 values recorded", self.entry.run_info.cget("text"))
+
     def test_values_are_stored_against_the_selected_location(self):
         self.entry.select_location(self.locations[2].id)
         self.app.update()
@@ -136,6 +142,34 @@ class AppTests(unittest.TestCase):
             self.type_into(self.tests[0], replicate, value)
         self.assertEqual(self.entry.rows[self.tests[0].id]["stats"]["status"].cget("text"),
                          "Check spread")
+
+    def test_a_tests_own_rsd_limit_overrides_the_app_default(self):
+        from measurelog.models import Test
+
+        self.app.rsd_warning = 50.0          # app-wide: very tolerant
+        strict = self.app.db.save_test(
+            Test(name="Strict pH", replicates=3, rsd_limit=2.0, sort_order=99))
+        self.app.notify("setup_changed")
+        self.app.update()
+
+        # ~3% RSD: within the app default, outside this test's own 2% rule.
+        for replicate, value in enumerate(["7.00", "7.20", "6.80"], start=1):
+            self.type_into(strict, replicate, value)
+        self.assertEqual(self.entry.rows[strict.id]["stats"]["status"].cget("text"),
+                         "Check spread")
+
+    def test_a_test_without_its_own_limit_uses_the_app_default(self):
+        from measurelog.models import Test
+
+        self.app.rsd_warning = 50.0
+        loose = self.app.db.save_test(Test(name="Loose", replicates=3, sort_order=98))
+        self.app.notify("setup_changed")
+        self.app.update()
+
+        for replicate, value in enumerate(["7.00", "7.20", "6.80"], start=1):
+            self.type_into(loose, replicate, value)
+        self.assertNotEqual(self.entry.rows[loose.id]["stats"]["status"].cget("text"),
+                            "Check spread")
 
     def test_unreadable_input_restores_the_saved_value_without_a_dialog(self):
         self.type_into(self.tests[0], 1, "7.01")
@@ -290,6 +324,85 @@ class AppTests(unittest.TestCase):
         self.app.db.set_setting("rsd_warning", "")
         self.app.refresh_settings()
         self.assertIsNone(self.app.rsd_warning)
+
+
+@unittest.skipUnless(HAVE_DISPLAY, "no display available")
+class TestLibraryDialogTests(unittest.TestCase):
+    """Picking tests from the SOP catalogue."""
+
+    def setUp(self):
+        from measurelog.ui import theme
+
+        self.root = tk.Tk()
+        theme.apply(self.root)
+
+    def tearDown(self):
+        self.root.destroy()
+
+    def open(self, existing=None):
+        from measurelog.ui.dialogs import TestLibraryDialog
+
+        dialog = TestLibraryDialog(self.root, existing or set())
+        self.root.update()
+        return dialog
+
+    def test_every_catalogue_test_is_offered(self):
+        from measurelog import catalog
+
+        dialog = self.open()
+        self.assertEqual(len(dialog._vars), len(catalog.TESTS))
+        dialog.destroy()
+
+    def test_nothing_is_ticked_to_begin_with(self):
+        dialog = self.open()
+        self.assertEqual(dialog.selected(), [])
+        dialog.destroy()
+
+    def test_select_all_then_clear(self):
+        from measurelog import catalog
+
+        dialog = self.open()
+        dialog._set_all(True)
+        self.assertEqual(len(dialog.selected()), len(catalog.TESTS))
+        dialog._set_all(False)
+        self.assertEqual(dialog.selected(), [])
+        dialog.destroy()
+
+    def test_tests_already_added_are_not_offered_again(self):
+        from measurelog import catalog
+
+        dialog = self.open({"pH", "Alkalinity"})
+        dialog._set_all(True)
+        names = {test.name for test in dialog.selected()}
+        self.assertNotIn("pH", names)
+        self.assertNotIn("Alkalinity", names)
+        self.assertEqual(len(names), len(catalog.TESTS) - 2)
+        dialog.destroy()
+
+    def test_existing_names_are_matched_regardless_of_case(self):
+        dialog = self.open({"ph"})
+        dialog._set_all(True)
+        self.assertNotIn("pH", {test.name for test in dialog.selected()})
+        dialog.destroy()
+
+    def test_the_counter_tracks_the_ticks(self):
+        dialog = self.open({"pH"})
+        self.assertIn("0 of 13", dialog.count_var.get())
+        dialog._set_all(True)
+        self.assertIn("13 of 13", dialog.count_var.get())
+        dialog.destroy()
+
+    def test_confirming_with_nothing_ticked_explains_itself(self):
+        dialog = self.open()
+        with self.assertRaises(ValueError):
+            dialog.collect()
+        dialog.destroy()
+
+    def test_asking_for_a_custom_test_closes_with_a_flag(self):
+        dialog = self.open()
+        dialog._request_custom()
+        self.assertTrue(dialog.custom_requested)
+        self.assertEqual(dialog.result, [])
 
 
 @unittest.skipUnless(HAVE_DISPLAY, "no display available")

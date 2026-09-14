@@ -67,8 +67,9 @@ def apply(root: tk.Misc) -> ttk.Style:
     style.configure("Accent.TButton", padding=(12, 6))
     style.configure("Location.TButton", padding=(14, 7))
     # ttk buttons default to a minimum width of 11 characters, which overflows
-    # the narrow Setup panels; this style sizes them to their label instead.
-    style.configure("Compact.TButton", padding=(6, 4), width=9)
+    # the narrow Setup panels. A NEGATIVE width is a minimum rather than a fixed
+    # size, so short labels stay compact and long ones are never clipped.
+    style.configure("Compact.TButton", padding=(6, 4), width=-9)
     style.map("Accent.TButton", background=[("active", ACCENT_LIGHT)])
     return style
 

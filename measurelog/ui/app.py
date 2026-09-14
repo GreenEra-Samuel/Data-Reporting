@@ -17,9 +17,11 @@ from .runs_tab import RunsTab
 from .setup_tab import SetupTab
 
 QUICK_START = """\
-1. Setup tab - list the places you take measurements (up to six is typical) and
-   the tests you run at each one. For every test, say how many replicates you
-   take - 3 for triplicates - and, if it helps, the acceptable range.
+1. Setup tab - click "Add from SOP library" and tick the tests you run. They
+   arrive with the units, replicate counts and method notes from your SOPs,
+   and you can edit any of it afterwards. Anything not in the SOPs goes in
+   through "New test". The sampling points from the SOPs (Influent, Digester 1,
+   Digester 2, Effluent) are already listed - rename or add to them freely.
 
 2. Entry tab - click "New run" for each round of measurements. Pick a location,
    then type your readings. Enter or the down arrow moves down the column, Tab

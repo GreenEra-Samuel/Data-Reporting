@@ -6,9 +6,10 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
+from . import catalog
 from .models import Cell, Location, LongRow, Run, Test
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -35,7 +36,9 @@ CREATE TABLE IF NOT EXISTS test (
     upper_limit REAL,
     replicates  INTEGER NOT NULL DEFAULT 3,
     sort_order  INTEGER NOT NULL DEFAULT 0,
-    active      INTEGER NOT NULL DEFAULT 1
+    active      INTEGER NOT NULL DEFAULT 1,
+    rsd_limit   REAL,
+    notes       TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS run (
@@ -66,17 +69,6 @@ CREATE INDEX IF NOT EXISTS idx_meas_run ON measurement (run_id);
 CREATE INDEX IF NOT EXISTS idx_meas_lookup ON measurement (test_id, location_id);
 """
 
-DEFAULT_LOCATIONS = [
-    ("Location 1", "L1"),
-    ("Location 2", "L2"),
-    ("Location 3", "L3"),
-]
-
-DEFAULT_TESTS = [
-    ("Test 1", "T1", ""),
-    ("Test 2", "T2", ""),
-    ("Test 3", "T3", ""),
-]
 
 
 def _now() -> str:
@@ -100,17 +92,40 @@ class Database:
     def _create_schema(self) -> None:
         with self.conn:
             self.conn.executescript(SCHEMA)
-        if self.get_setting("schema_version") is None:
-            self.set_setting("schema_version", str(SCHEMA_VERSION))
+        self._migrate()
+        self.set_setting("schema_version", str(SCHEMA_VERSION))
+
+    def _migrate(self) -> None:
+        """Bring an older database up to the current schema.
+
+        Columns are added in place so that a file written by an earlier version
+        keeps every measurement already recorded in it.
+        """
+        added = [
+            ("test", "rsd_limit", "REAL"),
+            ("test", "notes", "TEXT NOT NULL DEFAULT ''"),
+        ]
+        for table, column, definition in added:
+            if not self._has_column(table, column):
+                with self.conn:
+                    self.conn.execute(
+                        f"ALTER TABLE {table} ADD COLUMN {column} {definition}"
+                    )
+
+    def _has_column(self, table: str, column: str) -> bool:
+        rows = self.conn.execute(f"PRAGMA table_info({table})")
+        return any(row["name"] == column for row in rows)
 
     def seed_defaults(self) -> bool:
-        """Populate starter locations and tests on a brand new database."""
+        """Populate the sampling points from the SOPs on a brand new database.
+
+        No tests are created: the Setup tab offers the SOP test library, so
+        picking the real tests is a better first step than deleting placeholders.
+        """
         if self.list_locations() or self.list_tests():
             return False
-        for index, (name, code) in enumerate(DEFAULT_LOCATIONS):
-            self.save_location(Location(name=name, code=code, sort_order=index))
-        for index, (name, code, unit) in enumerate(DEFAULT_TESTS):
-            self.save_test(Test(name=name, code=code, unit=unit, sort_order=index))
+        for location in catalog.default_locations():
+            self.save_location(location)
         return True
 
     def close(self) -> None:
@@ -199,20 +214,22 @@ class Database:
         values = (
             test.name.strip(), test.code.strip(), test.unit.strip(), int(test.decimals),
             test.lower_limit, test.upper_limit, max(1, int(test.replicates)),
-            test.sort_order, int(test.active),
+            test.sort_order, int(test.active), test.rsd_limit, test.notes.strip(),
         )
         with self.conn:
             if test.id is None:
                 cursor = self.conn.execute(
                     "INSERT INTO test (name, code, unit, decimals, lower_limit, upper_limit, "
-                    "replicates, sort_order, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "replicates, sort_order, active, rsd_limit, notes) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     values,
                 )
                 test.id = int(cursor.lastrowid)
             else:
                 self.conn.execute(
                     "UPDATE test SET name = ?, code = ?, unit = ?, decimals = ?, lower_limit = ?, "
-                    "upper_limit = ?, replicates = ?, sort_order = ?, active = ? WHERE id = ?",
+                    "upper_limit = ?, replicates = ?, sort_order = ?, active = ?, rsd_limit = ?, "
+                    "notes = ? WHERE id = ?",
                     values + (test.id,),
                 )
         return test
@@ -489,10 +506,13 @@ class Database:
 
     @staticmethod
     def _as_test(row: sqlite3.Row) -> Test:
+        keys = row.keys()
         return Test(
             id=row["id"], name=row["name"], code=row["code"], unit=row["unit"],
             decimals=row["decimals"], lower_limit=row["lower_limit"], upper_limit=row["upper_limit"],
             replicates=row["replicates"], sort_order=row["sort_order"], active=bool(row["active"]),
+            rsd_limit=row["rsd_limit"] if "rsd_limit" in keys else None,
+            notes=(row["notes"] or "") if "notes" in keys else "",
         )
 
     @staticmethod

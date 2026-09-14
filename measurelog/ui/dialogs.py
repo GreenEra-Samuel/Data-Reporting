@@ -5,6 +5,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+from .. import catalog
 from ..models import Location, Run, Test
 from . import theme, widgets
 
@@ -12,12 +13,13 @@ from . import theme, widgets
 class BaseDialog(tk.Toplevel):
     """Modal dialog with OK / Cancel; ``result`` is None when cancelled."""
 
-    def __init__(self, parent, title: str, width: int = 420, height: int = 320):
+    def __init__(self, parent, title: str, width: int = 420, height: int = 320,
+                 ok_text: str = "Save", resizable: bool = False):
         super().__init__(parent)
         self.title(title)
         self.result = None
         self.transient(parent.winfo_toplevel())
-        self.resizable(False, False)
+        self.resizable(resizable, resizable)
         self.configure(background=theme.BG)
 
         self.body_frame = ttk.Frame(self, padding=16)
@@ -26,8 +28,9 @@ class BaseDialog(tk.Toplevel):
         buttons = ttk.Frame(self, padding=(16, 0, 16, 14))
         buttons.pack(fill="x")
         ttk.Button(buttons, text="Cancel", command=self.cancel).pack(side="right")
-        ttk.Button(buttons, text="Save", style="Accent.TButton",
+        ttk.Button(buttons, text=ok_text, style="Accent.TButton",
                    command=self.ok).pack(side="right", padx=(0, 8))
+        self.button_bar = buttons
 
         self.bind("<Return>", lambda _e: self.ok())
         self.bind("<Escape>", lambda _e: self.cancel())
@@ -178,7 +181,7 @@ class TestDialog(BaseDialog):
     def __init__(self, parent, test: Test | None = None, default_replicates: int = 3):
         self._test = test
         self._default_replicates = default_replicates
-        super().__init__(parent, "Edit test" if test and test.id else "New test", 470, 560)
+        super().__init__(parent, "Edit test" if test and test.id else "New test", 500, 700)
 
     def build(self, parent: ttk.Frame) -> None:
         test = self._test
@@ -199,12 +202,26 @@ class TestDialog(BaseDialog):
         )
         self.decimals.pack(side="left")
 
+        quality = ttk.Frame(parent)
+        quality.pack(fill="x", pady=(0, 8))
         self.replicates = widgets.LabeledEntry(
-            parent, "Replicates per location",
+            quality, "Replicates per location",
             str(test.replicates if test else self._default_replicates), width=6, numeric=True,
-            hint="How many times you repeat this test at each location (3 for triplicates).",
         )
-        self.replicates.pack(fill="x", pady=(0, 8))
+        self.replicates.pack(side="left", padx=(0, 20))
+        self.rsd = widgets.LabeledEntry(
+            quality, "%RSD warning",
+            "" if not test or test.rsd_limit is None else f"{test.rsd_limit:g}",
+            width=6, numeric=True,
+        )
+        self.rsd.pack(side="left")
+        ttk.Label(
+            parent,
+            text="Replicates: how many times you repeat this test at each location "
+                 "(3 for triplicates). %RSD warning: flag the group when the replicates "
+                 "disagree by more than this - leave blank to use the app-wide setting.",
+            style="Muted.TLabel", wraplength=440, justify="left",
+        ).pack(anchor="w", pady=(0, 8))
 
         limits = ttk.Labelframe(parent, text="Acceptable range (optional)", padding=10)
         limits.pack(fill="x", pady=(4, 8))
@@ -225,6 +242,13 @@ class TestDialog(BaseDialog):
         ttk.Label(limits, text="Values outside this range are highlighted in red as you type. "
                                "Leave blank if the test has no limits.",
                   style="Muted.TLabel", wraplength=400).pack(anchor="w", pady=(8, 0))
+
+        ttk.Label(parent, text="Method and notes", style="SubHeading.TLabel").pack(anchor="w")
+        self.notes = tk.Text(parent, height=6, width=48, wrap="word", relief="solid",
+                             borderwidth=1, highlightthickness=0)
+        self.notes.pack(fill="both", expand=True, pady=(2, 8))
+        if test and test.notes:
+            self.notes.insert("1.0", test.notes)
 
         self.active = tk.BooleanVar(value=test.active if test else True)
         ttk.Checkbutton(parent, text="Active (show on the entry screen)",
@@ -248,6 +272,10 @@ class TestDialog(BaseDialog):
         if not 1 <= replicates <= 20:
             raise ValueError("Replicates must be between 1 and 20.")
 
+        rsd_limit = self._number(self.rsd.get(), "%RSD warning")
+        if rsd_limit is not None and rsd_limit <= 0:
+            raise ValueError("The %RSD warning must be greater than zero, or blank.")
+
         test = self._test or Test()
         test.name = name
         test.code = self.code.get()
@@ -256,6 +284,8 @@ class TestDialog(BaseDialog):
         test.replicates = replicates
         test.lower_limit = lower
         test.upper_limit = upper
+        test.rsd_limit = rsd_limit
+        test.notes = self.notes.get("1.0", "end").strip()
         test.active = bool(self.active.get())
         return test
 
@@ -290,3 +320,120 @@ class NoteDialog(BaseDialog):
 
     def collect(self) -> str:
         return self.text.get("1.0", "end").strip()
+
+
+class TestLibraryDialog(BaseDialog):
+    """Pick tests from the SOP catalogue instead of typing them in."""
+
+    def __init__(self, parent, existing_names: set[str] | None = None):
+        self._existing = {name.strip().lower() for name in (existing_names or set())}
+        self._vars: dict[str, tk.BooleanVar] = {}
+        self.custom_requested = False
+        self.count_var = tk.StringVar(value="")
+        super().__init__(parent, "Add tests from your SOPs", 720, 640,
+                         ok_text="Add selected", resizable=True)
+
+    def build(self, parent: ttk.Frame) -> None:
+        ttk.Label(parent, text="Your laboratory SOPs", style="Heading.TLabel").pack(anchor="w")
+        ttk.Label(
+            parent,
+            text="Tick the tests you run. Each arrives with its units, replicate count and "
+                 "method notes already filled in - all of it editable afterwards.",
+            style="Muted.TLabel", wraplength=660, justify="left",
+        ).pack(anchor="w", pady=(2, 10))
+
+        toolbar = ttk.Frame(parent)
+        toolbar.pack(fill="x", pady=(0, 6))
+        ttk.Button(toolbar, text="Select all", style="Compact.TButton",
+                   command=lambda: self._set_all(True)).pack(side="left")
+        ttk.Button(toolbar, text="Clear", style="Compact.TButton",
+                   command=lambda: self._set_all(False)).pack(side="left", padx=6)
+        ttk.Label(toolbar, textvariable=self.count_var,
+                  style="SubHeading.TLabel").pack(side="right")
+
+        holder = ttk.Frame(parent, relief="solid", borderwidth=1)
+        holder.pack(fill="both", expand=True)
+        self.scroller = widgets.ScrollFrame(holder, horizontal=False)
+        self.scroller.pack(fill="both", expand=True)
+        self._build_list(self.scroller.body)
+
+        extra = ttk.Frame(self.button_bar)
+        extra.pack(side="left")
+        ttk.Button(extra, text="Add a different test\u2026",
+                   command=self._request_custom).pack(side="left")
+        self._update_count()
+
+    def _build_list(self, body: ttk.Frame) -> None:
+        body.columnconfigure(0, weight=1)
+        row = 0
+        for group_name, tests in catalog.grouped():
+            heading = tk.Label(
+                body, text=group_name, anchor="w", padx=10, pady=5,
+                background=theme.ACCENT_LIGHT, foreground=theme.TEXT,
+                font=("TkDefaultFont", 9, "bold"),
+            )
+            heading.grid(row=row, column=0, sticky="ew")
+            row += 1
+
+            for test in tests:
+                row = self._build_row(body, test, row)
+
+    def _build_row(self, body: ttk.Frame, test, row: int) -> int:
+        already = test.name.lower() in self._existing
+        frame = ttk.Frame(body, style="Surface.TFrame", padding=(10, 6))
+        frame.grid(row=row, column=0, sticky="ew")
+        frame.columnconfigure(1, weight=1)
+
+        variable = tk.BooleanVar(value=False)
+        self._vars[test.name] = variable
+        check = ttk.Checkbutton(frame, variable=variable, command=self._update_count)
+        check.grid(row=0, column=0, rowspan=2, sticky="nw", padx=(0, 8))
+
+        title = test.name if not already else f"{test.name}   \u2014 already in your list"
+        label = tk.Label(frame, text=title, anchor="w", background=theme.SURFACE,
+                         font=("TkDefaultFont", 9, "bold"),
+                         foreground=theme.MUTED if already else theme.TEXT)
+        label.grid(row=0, column=1, sticky="w")
+
+        tk.Label(frame, text=f"{test.summary}\n{test.method}", anchor="w", justify="left",
+                 background=theme.SURFACE, foreground=theme.MUTED, wraplength=560).grid(
+            row=1, column=1, sticky="w")
+
+        if already:
+            check.state(["disabled"])
+        self.scroller.bind_mousewheel(frame)
+        self.scroller.bind_mousewheel(label)
+        return row + 1
+
+    def _set_all(self, value: bool) -> None:
+        for name, variable in self._vars.items():
+            if name.lower() not in self._existing:
+                variable.set(value)
+        self._update_count()
+
+    def _update_count(self) -> None:
+        chosen = len(self.selected())
+        available = sum(1 for name in self._vars if name.lower() not in self._existing)
+        self.count_var.set(f"{chosen} of {available} selected")
+
+    def selected(self) -> list:
+        return [
+            test for test in catalog.TESTS
+            if self._vars.get(test.name) is not None
+            and self._vars[test.name].get()
+            and test.name.lower() not in self._existing
+        ]
+
+    def _request_custom(self) -> None:
+        self.custom_requested = True
+        self.result = []
+        self.destroy()
+
+    def collect(self) -> list:
+        chosen = self.selected()
+        if not chosen:
+            raise ValueError(
+                "No tests are ticked yet. Tick the ones you run, or use "
+                "\u201cAdd a different test\u201d for something not in the SOPs."
+            )
+        return chosen

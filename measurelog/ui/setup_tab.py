@@ -6,7 +6,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from . import widgets
-from .dialogs import LocationDialog, TestDialog
+from .dialogs import LocationDialog, TestDialog, TestLibraryDialog
 
 
 class SetupTab(widgets.DeferredRefresh, ttk.Frame):
@@ -23,8 +23,9 @@ class SetupTab(widgets.DeferredRefresh, ttk.Frame):
 
         columns = ttk.Frame(self)
         columns.pack(fill="both", expand=True)
+        # Location names are short; test names are long, so give tests the room.
         columns.columnconfigure(0, weight=2, uniform="setup")
-        columns.columnconfigure(1, weight=3, uniform="setup")
+        columns.columnconfigure(1, weight=4, uniform="setup")
         columns.rowconfigure(0, weight=1)
 
         self._build_locations(columns)
@@ -75,27 +76,41 @@ class SetupTab(widgets.DeferredRefresh, ttk.Frame):
         box = ttk.Labelframe(parent, text="Tests", padding=10)
         box.grid(row=0, column=1, sticky="nsew")
 
-        columns = ("name", "unit", "reps", "limits", "active", "readings")
+        columns = ("name", "unit", "reps", "rsd", "limits", "active", "readings")
         self.test_tree = ttk.Treeview(box, columns=columns, show="headings",
                                       selectmode="browse", height=12)
         for key, (title, width, anchor) in {
-            "name": ("Test", 150, "w"), "unit": ("Unit", 70, "center"),
-            "reps": ("Replicates", 80, "center"), "limits": ("Limits", 120, "center"),
-            "active": ("Active", 60, "center"), "readings": ("Readings", 70, "center"),
+            "name": ("Test", 175, "w"), "unit": ("Unit", 102, "center"),
+            "reps": ("Reps", 50, "center"), "rsd": ("%RSD", 55, "center"),
+            "limits": ("Limits", 82, "center"), "active": ("Active", 55, "center"),
+            "readings": ("Readings", 70, "center"),
         }.items():
             self.test_tree.heading(key, text=title)
-            self.test_tree.column(key, width=width, anchor=anchor)
+            # Only the name column grows, so long test names stay readable.
+            self.test_tree.column(key, width=width, anchor=anchor,
+                                  stretch=(key == "name"), minwidth=width)
         self.test_tree.pack(fill="both", expand=True)
         self.test_tree.bind("<Double-1>", lambda _e: self.edit_test())
 
+        primary = ttk.Frame(box)
+        primary.pack(fill="x", pady=(8, 0))
+        library = ttk.Button(primary, text="Add from SOP library…",
+                             style="Accent.TButton", command=self.add_from_library)
+        library.pack(side="left")
+        widgets.ToolTip(
+            library,
+            "Pick the tests straight from your laboratory SOPs, with their units,\n"
+            "replicate counts and method notes already filled in.",
+        )
+        ttk.Button(primary, text="New test…", style="Compact.TButton",
+                   command=self.add_test).pack(side="left", padx=6)
+
         bar = ttk.Frame(box)
-        bar.pack(fill="x", pady=(8, 0))
-        ttk.Button(bar, text="Add", style="Compact.TButton",
-                   command=self.add_test).pack(side="left")
+        bar.pack(fill="x", pady=(6, 0))
         ttk.Button(bar, text="Edit", style="Compact.TButton",
-                   command=self.edit_test).pack(side="left", padx=4)
+                   command=self.edit_test).pack(side="left")
         ttk.Button(bar, text="▲", width=3,
-                   command=lambda: self.move_test(-1)).pack(side="left")
+                   command=lambda: self.move_test(-1)).pack(side="left", padx=(4, 0))
         ttk.Button(bar, text="▼", width=3,
                    command=lambda: self.move_test(1)).pack(side="left", padx=(2, 4))
         ttk.Button(bar, text="Delete", style="Compact.TButton",
@@ -164,7 +179,9 @@ class SetupTab(widgets.DeferredRefresh, ttk.Frame):
         for test in self.tests:
             self.test_tree.insert(
                 "", "end", iid=str(test.id),
-                values=(test.name, test.unit, test.replicates, test.limit_text or "—",
+                values=(test.name, test.unit, test.replicates,
+                        "—" if test.rsd_limit is None else f"{test.rsd_limit:g}",
+                        test.limit_text or "—",
                         "Yes" if test.active else "No",
                         self.db.count_values(test_id=test.id)),
             )
@@ -245,6 +262,33 @@ class SetupTab(widgets.DeferredRefresh, ttk.Frame):
         self._announce()
 
     # ---------------------------------------------------------- test actions
+
+    def add_from_library(self) -> None:
+        """Add tests straight from the SOP catalogue."""
+        existing = {test.name for test in self.db.list_tests()}
+        dialog = TestLibraryDialog(self, existing)
+        chosen = dialog.show()
+
+        if dialog.custom_requested:
+            self.add_test()
+            return
+        if not chosen:
+            return
+
+        added, skipped = [], []
+        for entry in chosen:
+            try:
+                self.db.save_test(entry.to_test())
+                added.append(entry.name)
+            except Exception:       # a name that slipped past the existing-name filter
+                skipped.append(entry.name)
+
+        self._announce()
+        message = f"Added {len(added)} test(s):\n\n" + "\n".join(f"\u2022 {n}" for n in added)
+        if skipped:
+            message += "\n\nAlready present, so left alone:\n" + "\n".join(
+                f"\u2022 {n}" for n in skipped)
+        messagebox.showinfo("Tests added", message, parent=self)
 
     def add_test(self) -> None:
         test = TestDialog(self, None, self.app.default_replicates).show()

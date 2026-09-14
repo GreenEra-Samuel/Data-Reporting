@@ -33,12 +33,13 @@ git tag, or one double-click on Windows.
 | | |
 |---|---|
 | **Locations** | As many as you need; six is the usual case. Reorder them into the order you actually walk your round. |
-| **Tests** | Up to 20 or well beyond. Each has its own unit, decimal places, replicate count and acceptable range. |
+| **SOP library** | The 14 tests from the laboratory SOPs are built in. Tick the ones you run and they arrive complete with units, replicate counts, QC limits and method notes. |
+| **Tests** | Up to 20 or well beyond. Each has its own unit, decimal places, replicate count and acceptable range. Anything not in the SOPs is added by hand. |
 | **Replicates** | Per test, so triplicate pH can sit next to a single-reading temperature. |
 | **Runs** | One round of measurements. Repeat a round with one click and the app numbers them Round 1, Round 2, … through the day. |
 | **Live statistics** | Mean, standard deviation and %RSD appear as you type, per test, per location. |
 | **Range checks** | Readings outside a test's acceptable range turn red immediately — not after you export. |
-| **Spread check** | If your replicates disagree more than a threshold you set, the row says *Check spread*. |
+| **Spread check** | If your replicates disagree more than a threshold you set, the row says *Check spread*. Tests can carry their own limit — pH uses the 2% RSD its SOP requires — and anything without one falls back to the app-wide setting. |
 | **Exports** | Excel workbook or CSV, for any date range. |
 | **Your data** | One file you can copy, back up, or keep on a shared drive. |
 
@@ -46,9 +47,14 @@ git tag, or one double-click on Windows.
 
 ## The first five minutes
 
-1. **Setup tab** — replace the starter entries with your own locations, then
-   your tests. For each test set the unit, how many replicates you take, and
-   (optionally) the acceptable range. Do this once.
+1. **Setup tab** — click **Add from SOP library**, tick the tests you run, and
+   they are added with their units, replicate counts, QC limits and method
+   notes already filled in. Anything not in the SOPs goes in through **New
+   test**. Everything stays editable afterwards.
+
+   The sampling points from the SOPs — Influent, Digester 1, Digester 2,
+   Effluent — are listed for you; rename them or add more to match your round.
+   Do this once.
 
 2. **Entry tab** — click **New run**, then start typing.
    - Pick a location from the buttons along the top.
@@ -169,6 +175,12 @@ pyinstaller packaging/MeasureLog.spec --noconfirm --clean
 
 ---
 
+## Upgrading
+
+Replace the old `MeasureLog.exe` with the new one. Your measurements are in a
+separate file, so nothing is lost: the app upgrades the data file in place the
+first time it opens it, keeping every reading already recorded.
+
 ## Running from source
 
 ```bash
@@ -195,8 +207,9 @@ switching locations and tabs — and skip themselves when there is no display.
 ```
 main.py                   entry point; also --selftest and --version
 measurelog/
+  catalog.py              the test library taken from the laboratory SOPs
   config.py               where the data folder is, and daily backups
-  db.py                   SQLite schema and every read and write
+  db.py                   SQLite schema, migrations, and every read and write
   models.py               Location, Test, Run, Cell
   stats.py                mean, SD, %RSD, range checks, spread check
   exporters.py            CSV and Excel writers

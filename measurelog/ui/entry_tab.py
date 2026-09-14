@@ -269,8 +269,15 @@ class EntryTab(ttk.Frame):
             padx=8, pady=3, foreground=theme.TEXT,
         )
         name.grid(row=grid_row, column=0, sticky="nsew", padx=(0, 1), pady=(0, 1))
+        tip = []
         if test.limit_text:
-            widgets.ToolTip(name, f"Acceptable range: {test.limit_text} {test.unit}".strip())
+            tip.append(f"Acceptable range: {test.limit_text} {test.unit}".strip())
+        if test.rsd_limit is not None:
+            tip.append(f"Replicates should agree within {test.rsd_limit:g}% RSD")
+        if test.notes:
+            tip.append(test.notes)
+        if tip:
+            widgets.ToolTip(name, "\n".join(tip))
 
         for replicate in range(1, max_reps + 1):
             column = replicate
@@ -495,7 +502,10 @@ class EntryTab(ttk.Frame):
         if status == "high":
             return "Above limit", theme.BAD_FG
 
-        if flag_outliers(values, self.app.rsd_warning):
+        # A test from the SOPs can carry its own QC limit (pH must be under 2%);
+        # anything without one falls back to the app-wide setting.
+        limit = test.rsd_limit if test.rsd_limit is not None else self.app.rsd_warning
+        if flag_outliers(values, limit):
             return "Check spread", theme.WARN_FG
         if stats.n < expected:
             return f"{stats.n} of {expected}", theme.MUTED
@@ -513,6 +523,7 @@ class EntryTab(ttk.Frame):
             )
         )
         self.progress_var.set(f"{done} of {len(self.tests)} tests started")
+        self._refresh_run_info()
 
         run = self.current_run()
         if run is None:

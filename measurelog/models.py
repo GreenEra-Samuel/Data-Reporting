@@ -31,6 +31,9 @@ class Test:
     replicates: int = 3
     sort_order: int = 0
     active: bool = True
+    # None means "fall back to the app-wide %RSD warning".
+    rsd_limit: float | None = None
+    notes: str = ""
 
     @property
     def label(self) -> str:
