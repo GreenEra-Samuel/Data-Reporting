@@ -1,0 +1,4 @@
+-r requirements.txt
+
+# Only needed on the machine that builds the .exe.
+pyinstaller>=6.6,<7

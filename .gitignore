@@ -1,0 +1,24 @@
+# Build output
+build/
+dist/
+*.egg-info/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# MeasureLog data files - never commit measurements
+*.db
+*.db-wal
+*.db-shm
+MeasureLog-Data/
+datadir.txt
+portable.flag
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

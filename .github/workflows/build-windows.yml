@@ -1,0 +1,113 @@
+name: Build Windows app
+
+# Produces a single MeasureLog.exe that runs on any Windows 10/11 machine with
+# nothing else installed.
+#
+#  * every push  -> the .exe is attached to the workflow run as an artifact
+#  * a v* tag    -> the .exe is published on the Releases page, which gives it a
+#                   permanent direct download link
+on:
+  push:
+    branches: [main, master, 'claude/**']
+    tags: ['v*']
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Tests (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Run the test suite
+        # xvfb gives the interface tests a display to draw on.
+        run: xvfb-run -a python -m unittest discover -s tests -v
+
+  build:
+    name: Build MeasureLog.exe
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-build.txt
+
+      - name: Run the test suite on Windows
+        run: python -m unittest discover -s tests -v
+
+      - name: Build the executable
+        run: pyinstaller packaging/MeasureLog.spec --noconfirm --clean
+
+      - name: Verify the executable runs
+        shell: pwsh
+        run: |
+          $exe = "dist/MeasureLog.exe"
+          if (-not (Test-Path $exe)) { throw "MeasureLog.exe was not produced" }
+          $size = [math]::Round((Get-Item $exe).Length / 1MB, 1)
+          Write-Host "Built $exe ($size MB)"
+
+          # The app is a windowed build, so check the exit code rather than output.
+          $process = Start-Process -FilePath $exe -ArgumentList '--selftest' -Wait -PassThru
+          if ($process.ExitCode -ne 0) {
+            throw "MeasureLog.exe --selftest failed with exit code $($process.ExitCode)"
+          }
+          Write-Host "Self-test passed"
+
+      - name: Record the version and checksum
+        shell: pwsh
+        run: |
+          $match = Select-String -Path measurelog/__init__.py -Pattern 'APP_VERSION = "(.+)"' | Select-Object -First 1
+          $version = $match.Matches[0].Groups[1].Value
+          "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $hash = (Get-FileHash dist/MeasureLog.exe -Algorithm SHA256).Hash
+          "$hash  MeasureLog.exe" | Out-File -FilePath dist/MeasureLog.exe.sha256 -Encoding ascii
+          Write-Host "MeasureLog $version"
+          Write-Host "SHA256: $hash"
+
+      - name: Upload the build
+        uses: actions/upload-artifact@v4
+        with:
+          name: MeasureLog-windows
+          path: |
+            dist/MeasureLog.exe
+            dist/MeasureLog.exe.sha256
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Publish a release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The notes live in packaging/release-notes.md so they can be edited
+          # without touching this workflow.
+          (Get-Content packaging/release-notes.md -Raw).Replace('{VERSION}', $env:APP_VERSION) |
+            Set-Content dist/release-notes.md -Encoding utf8
+          gh release create "${{ github.ref_name }}" `
+            dist/MeasureLog.exe dist/MeasureLog.exe.sha256 `
+            --title "MeasureLog $env:APP_VERSION" `
+            --notes-file dist/release-notes.md
