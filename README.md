@@ -139,9 +139,16 @@ git push origin v1.0.0
 ```
 
 A few minutes later, `MeasureLog.exe` is on the Releases page with a permanent
-download link. Every ordinary push also builds the program and attaches it to
-the workflow run under **Actions → the run → Artifacts**, which is handy for
-testing before you tag.
+download link.
+
+You can also cut a release without touching git: go to **Actions → Build
+Windows app → Run workflow**, and type the tag (for example `v1.0.0`) in the
+*Publish a release under this tag* box. The workflow creates the tag at the
+commit it builds and publishes the release itself.
+
+Every ordinary push builds the program too and attaches it to the workflow run
+under **Actions → the run → Artifacts**, which is handy for testing before you
+release.
 
 ### Option B — build on your own Windows machine
 

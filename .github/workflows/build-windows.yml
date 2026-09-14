@@ -13,6 +13,13 @@ on:
   pull_request:
     branches: [main, master]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: >-
+          Publish a release under this tag (e.g. v1.0.0). The tag is created at
+          the commit being built. Leave empty to only build the .exe.
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -98,7 +105,7 @@ jobs:
           if-no-files-found: error
 
       - name: Publish a release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.release_tag != ''
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -107,7 +114,25 @@ jobs:
           # without touching this workflow.
           (Get-Content packaging/release-notes.md -Raw).Replace('{VERSION}', $env:APP_VERSION) |
             Set-Content dist/release-notes.md -Encoding utf8
-          gh release create "${{ github.ref_name }}" `
-            dist/MeasureLog.exe dist/MeasureLog.exe.sha256 `
-            --title "MeasureLog $env:APP_VERSION" `
-            --notes-file dist/release-notes.md
+
+          $requested = "${{ github.event.inputs.release_tag }}"
+          if ($requested) {
+            $tag = $requested          # manual run: the tag does not exist yet
+          } else {
+            $tag = "${{ github.ref_name }}"   # tag push: it already does
+          }
+
+          $ghArgs = @(
+            'release', 'create', $tag,
+            'dist/MeasureLog.exe', 'dist/MeasureLog.exe.sha256',
+            '--title', "MeasureLog $env:APP_VERSION",
+            '--notes-file', 'dist/release-notes.md'
+          )
+          if ($requested) {
+            # Create the tag at the exact commit that produced this .exe.
+            $ghArgs += @('--target', '${{ github.sha }}')
+          }
+
+          Write-Host "Publishing $tag"
+          gh @ghArgs
+          gh release view $tag --json tagName,url,assets --jq '"\(.tagName) -> \(.url)", (.assets[] | "  asset: \(.name) \(.size) bytes")'
