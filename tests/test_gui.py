@@ -71,6 +71,16 @@ class AppTests(unittest.TestCase):
         os.environ.pop("MEASURELOG_DATA_DIR", None)
         self.folder.cleanup()
 
+    def focused_widget(self):
+        """Which widget holds the keyboard focus inside the app window.
+
+        Tk's focus_get() returns None whenever the application does not own the
+        operating system's input focus - which is the normal state for a CI
+        desktop - so ask the toplevel instead, which reports the widget that
+        holds focus either way.
+        """
+        return self.app.focus_lastfor()
+
     def type_into(self, test, replicate, text):
         cell = self.entry.cells[(test.id, replicate)]
         cell["var"].set(text)
@@ -157,14 +167,30 @@ class AppTests(unittest.TestCase):
         self.entry.focus_first_cell()
         self.app.update()
         self.entry._navigate(self.entry.cells[(self.tests[0].id, 1)], 1, 0)
-        self.assertIs(self.app.focus_get(), self.entry.cells[(self.tests[1].id, 1)]["entry"])
+        self.assertIs(self.focused_widget(), self.entry.cells[(self.tests[1].id, 1)]["entry"])
 
     def test_navigating_past_the_last_row_stays_put(self):
         last = self.entry.cells[(self.tests[-1].id, 1)]
         last["entry"].focus_set()
         self.app.update()
         self.entry._navigate(last, 1, 0)
-        self.assertIs(self.app.focus_get(), last["entry"])
+        self.assertIs(self.focused_widget(), last["entry"])
+
+    def test_navigation_skips_tests_with_fewer_replicates(self):
+        from measurelog.models import Test
+
+        short = self.app.db.save_test(Test(name="Two only", replicates=2, sort_order=1))
+        self.app.notify("setup_changed")
+        self.app.update()
+
+        # Column 3 exists for test 1 but not for the two-replicate test below it,
+        # so moving down from it must land on the next test that has a column 3.
+        start = self.entry.cells[(self.tests[0].id, 3)]
+        start["entry"].focus_set()
+        self.app.update()
+        self.entry._navigate(start, 1, 0)
+        self.assertNotIn((short.id, 3), self.entry.cells)
+        self.assertIs(self.focused_widget(), self.entry.cells[(self.tests[1].id, 3)]["entry"])
 
     def test_next_location_cycles_round(self):
         self.entry.select_location(self.locations[-1].id)
