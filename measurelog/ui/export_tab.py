@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import os
-import subprocess
-import sys
 import tkinter as tk
 from datetime import date, timedelta
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from .. import config, exporters
+from .. import config, exporters, files
 from . import widgets
 
 
@@ -273,13 +270,5 @@ class ExportTab(widgets.DeferredRefresh, ttk.Frame):
     @staticmethod
     def open_path(path: Path) -> None:
         """Open a folder in the system file browser."""
-        path = Path(path)
-        try:
-            if sys.platform.startswith("win"):
-                os.startfile(str(path))  # type: ignore[attr-defined]
-            elif sys.platform == "darwin":
-                subprocess.Popen(["open", str(path)])
-            else:
-                subprocess.Popen(["xdg-open", str(path)])
-        except Exception:  # pragma: no cover - platform dependent
+        if not files.open_in_system(path):  # pragma: no cover - platform dependent
             messagebox.showinfo("Folder", str(path))

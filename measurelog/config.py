@@ -80,6 +80,7 @@ def ensure_data_dir() -> Path:
     target.mkdir(parents=True, exist_ok=True)
     (target / "backups").mkdir(exist_ok=True)
     (target / "exports").mkdir(exist_ok=True)
+    (target / "files").mkdir(exist_ok=True)
     return target
 
 
@@ -121,3 +122,12 @@ def make_backup(source: Path | None = None, keep: int = BACKUP_KEEP) -> Path | N
         except OSError:
             pass
     return target
+
+
+def files_dir() -> Path:
+    """Folder holding the files attached to runs.
+
+    They live beside the database rather than inside it, so a copied data
+    folder brings the documents along and any file manager can still read them.
+    """
+    return ensure_data_dir() / "files"

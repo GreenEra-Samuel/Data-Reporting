@@ -37,6 +37,8 @@ git tag, or one double-click on Windows.
 | **Tests** | Up to 20 or well beyond. Each has its own unit, decimal places, replicate count and acceptable range. Anything not in the SOPs is added by hand. |
 | **Replicates** | Per test, so triplicate pH can sit next to a single-reading temperature. |
 | **Runs** | One round of measurements. Repeat a round with one click and the app numbers them Round 1, Round 2, … through the day. |
+| **Your files** | A file browser built into the app. Add a photo, a meter printout or a calibration certificate to a run and MeasureLog keeps its own copy, so the paperwork travels with the readings. |
+| **Importing** | Already have the numbers in a spreadsheet? Read a CSV or Excel file straight into a run. It works out which column is which, and shows you every row it understood — and every row it did not — before anything is written. |
 | **Tidying up** | Ctrl-click or Shift-click to select several tests, locations or runs, then Delete. Anything holding readings can be hidden instead of deleted, so your records stay intact. |
 | **Live statistics** | Mean, standard deviation and %RSD appear as you type, per test, per location. |
 | **Range checks** | Readings outside a test's acceptable range turn red immediately — not after you export. |
@@ -46,7 +48,7 @@ git tag, or one double-click on Windows.
 
 ---
 
-## The first five minutes
+## The first few minutes
 
 1. **Setup tab** — click **Add from SOP library**, tick the tests you run, and
    they are added with their units, replicate counts, QC limits and method
@@ -73,7 +75,10 @@ git tag, or one double-click on Windows.
    mean, mean ± SD, %RSD, range, or how many replicates are done. **Copy table**
    puts it on the clipboard ready to paste into Excel.
 
-5. **Export tab** — pick a date range and write an Excel workbook or CSV files.
+5. **Files tab** — browse your computer without leaving the app, then either
+   **Add to this run** or **Import readings**. See [Files and imports](#files-and-imports).
+
+6. **Export tab** — pick a date range and write an Excel workbook or CSV files.
 
 ### Tidying up
 
@@ -97,23 +102,82 @@ says how many readings are at stake before you commit.
 | `Ctrl+N` | New run |
 | `F1` | Quick start |
 | Right-click a cell | Add a note, clear the cell, clear the row |
-| `Ctrl+A`, `Delete` | In the Setup and Runs lists: select all, delete the selection |
+| `Ctrl+A`, `Delete` | In the Setup, Runs and Files lists: select all, delete the selection |
+| `Backspace` | In the file browser: up to the folder above |
+
+---
+
+## Files and imports
+
+The **Files tab** is the app's own file explorer — shortcuts to Desktop,
+Documents, Downloads and any USB stick down the side, a folder you can type or
+click your way into, and every file labelled in plain words (*Excel workbook*,
+*JPEG image*, *PDF document*) rather than by its extension. CSV and Excel files
+are shown in green, because those are the ones readings can be read out of.
+
+Pick a file — or several, with Ctrl-click — and you have two choices.
+
+### Add to this run
+
+MeasureLog copies the file into `Documents\MeasureLog\files` and lists it
+against the run. It is a copy, not a shortcut, so moving, renaming or deleting
+the original later leaves your record intact, and a data folder handed to
+somebody else brings every document with it.
+
+Each file can carry a line saying what it is — *"calibration certificate"*,
+*"meter printout"* — and the list will **Open** it, **Save a copy** somewhere
+else, or **Remove** it. Removing deletes MeasureLog's copy and nothing else;
+your original is never touched. The **Entry** tab shows how many files a run
+carries, and the **Runs** list has a Files column.
+
+### Import readings
+
+Point it at a CSV or Excel file and MeasureLog reads the measurements into the
+run. Two shapes of file are understood, and it works out which one it is looking
+at:
+
+| Shape | Looks like |
+|---|---|
+| **One row per reading** | Columns for the location, the test and the value — plus replicate and note if you have them |
+| **A grid** | Tests down one side, locations across the top — the layout of the Review tab, of the app's own exports, and of most hand-kept spreadsheets |
+
+Names do not have to match exactly: `Total Solids`, `total solids`, `TotalSolids`
+and `Total Solids (%)` all find the same test, and test codes work too. Numbers
+written `2,450` or `1.234,5` are read the way you meant them.
+
+Nothing is written until you have seen what it understood. The dialog shows
+every row with what will happen to it, and puts the rows it could not use at the
+top with the reason — *no test called "Unobtainium"*, *"abc" is not a number*,
+*that is a limit rather than a reading*. Fix the column choices if the guess was
+wrong, then import.
+
+Two choices worth knowing about:
+
+- **Replace readings already recorded in this run** is off by default, so an
+  import fills the empty cells and leaves anything you have already typed alone.
+- **Keep a copy of this file with the run** is on by default, so the spreadsheet
+  the numbers came from is filed against the run as well.
+
+Since the app's own exports are ordinary CSV files, anything MeasureLog writes
+out it can read back in — useful for moving a day's readings between computers.
 
 ---
 
 ## Where your measurements live
 
-Everything sits in one SQLite file:
+Every reading sits in one SQLite file, with the files you have added beside it:
 
 ```
 C:\Users\<you>\Documents\MeasureLog\measurelog.db
+C:\Users\<you>\Documents\MeasureLog\files\
 ```
 
 The **Export tab** shows the exact path, opens the folder, and can back it up on
 demand. The app also keeps a dated backup automatically, once a day, in
 `Documents\MeasureLog\backups` (the last 15 are kept).
 
-**Moving to another computer:** copy `measurelog.db` to the same folder there.
+**Moving to another computer:** copy `measurelog.db` to the same folder there —
+and the `files` folder with it, if you have added any.
 
 **A shared drive, so a team sees the same records:** put `datadir.txt` next to
 `MeasureLog.exe` containing the folder path, for example:
@@ -230,8 +294,8 @@ python main.py
 ```
 
 Useful flags: `--version`, `--data-dir DIR`, and `--selftest`, which checks that
-a build can store, summarise and export data (this is what CI runs against the
-finished `.exe`).
+a build can store, summarise, export, import and file away data (this is what CI
+runs against the finished `.exe`).
 
 ### Tests
 
@@ -241,7 +305,8 @@ xvfb-run -a python -m unittest discover -s tests -v   # headless Linux
 ```
 
 The interface tests drive the real widgets — typing into cells, navigating,
-switching locations and tabs — and skip themselves when there is no display.
+switching locations and tabs, walking the file browser through folders and
+importing a spreadsheet — and skip themselves when there is no display.
 
 ### Layout
 
@@ -251,14 +316,19 @@ measurelog/
   catalog.py              the test library taken from the laboratory SOPs
   config.py               where the data folder is, and daily backups
   db.py                   SQLite schema, migrations, and every read and write
-  models.py               Location, Test, Run, Cell
+  models.py               Location, Test, Run, Cell, Attachment
   stats.py                mean, SD, %RSD, range checks, spread check
   exporters.py            CSV and Excel writers
+  importers.py            reading measurements back out of CSV and Excel
+  files.py                copying added files into the data folder, and naming types
   ui/
     app.py                main window, menus, shortcuts, event bus
     entry_tab.py          the data entry grid
     runs_tab.py           browse and edit past runs
     review_tab.py         one run as a tests-by-locations matrix
+    files_tab.py          add files to a run, and import readings
+    browser.py            the file explorer built into the app
+    import_dialog.py      column matching and the preview before an import
     export_tab.py         exports, backups, data file location
     setup_tab.py          locations, tests and preferences
     dialogs.py            add/edit dialogs

@@ -242,52 +242,52 @@ class AppTests(unittest.TestCase):
         self.assertEqual(self.app._icon_image.height(), 256)
 
     def test_every_tab_renders(self):
-        for index in range(5):
-            self.app.notebook.select(index)
+        for tab, _name in self.app.tab_order:
+            self.app.notebook.select(tab)
             self.app.update()
-        self.assertEqual(len(self.app.notebook.tabs()), 5)
+        self.assertEqual(len(self.app.notebook.tabs()), len(self.app.tab_order))
 
     def test_review_matrix_reports_the_readings(self):
         for replicate, value in enumerate(["7.01", "7.03", "6.99"], start=1):
             self.type_into(self.tests[0], replicate, value)
-        self.app.notebook.select(2)
+        self.app.notebook.select(self.app.review_tab)
         self.app.update()
         self.assertIn("3 reading(s)", self.app.review_tab.summary_var.get())
 
     def test_review_views_all_draw(self):
         self.type_into(self.tests[0], 1, "7.01")
-        self.app.notebook.select(2)
+        self.app.notebook.select(self.app.review_tab)
         for _, view in [("", "mean"), ("", "mean_sd"), ("", "rsd"), ("", "values"), ("", "span")]:
             self.app.review_tab.view_var.set(view)
             self.app.review_tab.draw()
             self.app.update()
 
     def test_runs_tab_lists_the_run(self):
-        self.app.notebook.select(1)
+        self.app.notebook.select(self.app.runs_tab)
         self.app.update()
         self.assertIn(str(self.run.id), self.app.runs_tab.tree.get_children())
 
     def test_export_tab_describes_the_data(self):
         self.type_into(self.tests[0], 1, "7.01")
-        self.app.notebook.select(3)
+        self.app.notebook.select(self.app.export_tab)
         self.app.update()
         self.assertIn("1 measurements", self.app.export_tab.summary_var.get())
 
     def test_setup_tab_lists_locations_and_tests(self):
-        self.app.notebook.select(4)
+        self.app.notebook.select(self.app.setup_tab)
         self.app.update()
         self.assertEqual(len(self.app.setup_tab.location_tree.get_children()), 6)
         self.assertEqual(len(self.app.setup_tab.test_tree.get_children()), 20)
 
     def test_setup_tab_reading_counts_follow_new_data(self):
-        self.app.notebook.select(4)
+        self.app.notebook.select(self.app.setup_tab)
         self.app.update()
         readings = self.app.setup_tab.test_tree.item(str(self.tests[0].id))["values"][-1]
         self.assertEqual(int(readings), 0)
 
-        self.app.notebook.select(0)
+        self.app.notebook.select(self.app.entry_tab)
         self.type_into(self.tests[0], 1, "7.01")
-        self.app.notebook.select(4)
+        self.app.notebook.select(self.app.setup_tab)
         self.app.update()
         readings = self.app.setup_tab.test_tree.item(str(self.tests[0].id))["values"][-1]
         self.assertEqual(int(readings), 1)

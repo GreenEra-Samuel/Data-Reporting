@@ -31,6 +31,7 @@ class EntryTab(ttk.Frame):
         self.loc_var = tk.IntVar(value=0)
         self.status_var = tk.StringVar(value="")
         self.progress_var = tk.StringVar(value="")
+        self.files_var = tk.StringVar(value="Files")
 
         self._build_header()
         self._build_location_bar()
@@ -40,6 +41,7 @@ class EntryTab(ttk.Frame):
         app.subscribe("setup_changed", self.reload)
         app.subscribe("runs_changed", self.reload_runs)
         app.subscribe("run_selected", self._on_run_selected_externally)
+        app.subscribe("files_changed", self._refresh_run_info)
 
     # ------------------------------------------------------------ chrome
 
@@ -61,6 +63,15 @@ class EntryTab(ttk.Frame):
             repeat,
             "Start a new empty run now, reusing this run's operator and notes - "
             "for the next round of the day.",
+        )
+
+        self.files_button = ttk.Button(bar, textvariable=self.files_var,
+                                       command=self.app.show_files_tab)
+        self.files_button.pack(side="left", padx=(8, 0))
+        widgets.ToolTip(
+            self.files_button,
+            "Photos, printouts and certificates kept with this run - and where you\n"
+            "import readings from a spreadsheet instead of typing them.",
         )
 
         info = ttk.Frame(self)
@@ -154,6 +165,9 @@ class EntryTab(ttk.Frame):
             bits.append(f"Notes: {run.notes}")
         bits.append(f"{self.db.count_values(run_id=run.id)} values recorded")
         self.run_info.configure(text="   |   ".join(bits))
+
+        attached = self.db.count_attachments(run.id)
+        self.files_var.set(f"Files ({attached})" if attached else "Files")
 
     def current_run(self):
         run_id = self.app.current_run_id

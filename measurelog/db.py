@@ -7,9 +7,9 @@ from datetime import datetime
 from pathlib import Path
 
 from . import catalog
-from .models import Cell, Location, LongRow, Run, Test
+from .models import Attachment, Cell, Location, LongRow, Run, Test
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -64,9 +64,21 @@ CREATE TABLE IF NOT EXISTS measurement (
     UNIQUE (run_id, location_id, test_id, replicate)
 );
 
+CREATE TABLE IF NOT EXISTS attachment (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id      INTEGER REFERENCES run(id) ON DELETE CASCADE,
+    filename    TEXT NOT NULL,
+    stored_name TEXT NOT NULL UNIQUE,
+    size        INTEGER NOT NULL DEFAULT 0,
+    source_path TEXT NOT NULL DEFAULT '',
+    note        TEXT NOT NULL DEFAULT '',
+    added_at    TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_run_when ON run (run_date, run_time);
 CREATE INDEX IF NOT EXISTS idx_meas_run ON measurement (run_id);
 CREATE INDEX IF NOT EXISTS idx_meas_lookup ON measurement (test_id, location_id);
+CREATE INDEX IF NOT EXISTS idx_attachment_run ON attachment (run_id);
 """
 
 
@@ -304,9 +316,16 @@ class Database:
             )
         return run
 
-    def delete_run(self, run_id: int) -> None:
+    def delete_run(self, run_id: int) -> list[str]:
+        """Delete a run and report the attached files left with no owner.
+
+        The attachment rows go with the run (ON DELETE CASCADE), but the copies
+        on disk are ours to clean up, so their names are handed back.
+        """
+        orphaned = [attachment.stored_name for attachment in self.list_attachments(run_id)]
         with self.conn:
             self.conn.execute("DELETE FROM run WHERE id = ?", (run_id,))
+        return orphaned
 
     def duplicate_run(self, run_id: int, run_date: str, run_time: str = "",
                       label: str = "", copy_values: bool = False) -> Run | None:
@@ -420,6 +439,74 @@ class Database:
         ).fetchone()
         return int(row["n"])
 
+    # ---------------------------------------------------------- attachments
+
+    def list_attachments(self, run_id: int | None = None,
+                         every_run: bool = False) -> list[Attachment]:
+        """Files for one run, or - with every_run - the whole collection."""
+        sql = "SELECT * FROM attachment"
+        params: list = []
+        if not every_run:
+            sql += " WHERE run_id IS ?"
+            params.append(run_id)
+        sql += " ORDER BY added_at DESC, id DESC"
+        return [self._as_attachment(row) for row in self.conn.execute(sql, params)]
+
+    def get_attachment(self, attachment_id: int) -> Attachment | None:
+        row = self.conn.execute(
+            "SELECT * FROM attachment WHERE id = ?", (attachment_id,)).fetchone()
+        return self._as_attachment(row) if row else None
+
+    def add_attachment(self, attachment: Attachment) -> Attachment:
+        attachment.added_at = attachment.added_at or _now()
+        with self.conn:
+            cursor = self.conn.execute(
+                "INSERT INTO attachment (run_id, filename, stored_name, size, source_path, "
+                "note, added_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (attachment.run_id, attachment.filename, attachment.stored_name,
+                 int(attachment.size), attachment.source_path, attachment.note,
+                 attachment.added_at),
+            )
+            attachment.id = int(cursor.lastrowid)
+        return attachment
+
+    def update_attachment(self, attachment: Attachment) -> Attachment:
+        with self.conn:
+            self.conn.execute(
+                "UPDATE attachment SET run_id = ?, filename = ?, note = ? WHERE id = ?",
+                (attachment.run_id, attachment.filename, attachment.note, attachment.id),
+            )
+        return attachment
+
+    def delete_attachment(self, attachment_id: int) -> str | None:
+        """Remove the record and return the stored name, for the file to follow."""
+        attachment = self.get_attachment(attachment_id)
+        if attachment is None:
+            return None
+        with self.conn:
+            self.conn.execute("DELETE FROM attachment WHERE id = ?", (attachment_id,))
+        return attachment.stored_name
+
+    def attachment_counts(self) -> dict[int, int]:
+        """How many files each run carries, for the Runs list."""
+        rows = self.conn.execute(
+            "SELECT run_id, COUNT(*) AS n FROM attachment WHERE run_id IS NOT NULL GROUP BY run_id"
+        )
+        return {int(row["run_id"]): int(row["n"]) for row in rows}
+
+    def count_attachments(self, run_id: int | None = None) -> int:
+        sql = "SELECT COUNT(*) AS n FROM attachment"
+        params: list = []
+        if run_id is not None:
+            sql += " WHERE run_id = ?"
+            params.append(run_id)
+        return int(self.conn.execute(sql, params).fetchone()["n"])
+
+    def stored_names(self) -> set[str]:
+        """Every filename the database still expects to find on disk."""
+        return {row["stored_name"] for row in
+                self.conn.execute("SELECT stored_name FROM attachment")}
+
     # -------------------------------------------------------------- reading
 
     def fetch_long_rows(
@@ -513,6 +600,14 @@ class Database:
             replicates=row["replicates"], sort_order=row["sort_order"], active=bool(row["active"]),
             rsd_limit=row["rsd_limit"] if "rsd_limit" in keys else None,
             notes=(row["notes"] or "") if "notes" in keys else "",
+        )
+
+    @staticmethod
+    def _as_attachment(row: sqlite3.Row) -> Attachment:
+        return Attachment(
+            id=row["id"], run_id=row["run_id"], filename=row["filename"],
+            stored_name=row["stored_name"], size=row["size"],
+            source_path=row["source_path"], note=row["note"] or "", added_at=row["added_at"],
         )
 
     @staticmethod

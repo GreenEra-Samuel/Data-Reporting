@@ -57,7 +57,7 @@ class MultiSelectTestCase(unittest.TestCase):
         self.app.notify("setup_changed")
         self.app.notify("runs_changed")
 
-        self.app.notebook.select(4)          # Setup
+        self.app.notebook.select(self.app.setup_tab)
         self.app.update()
         self.setup = self.app.setup_tab
         self.runs = self.app.runs_tab
@@ -195,7 +195,7 @@ class DeleteTestsTests(MultiSelectTestCase):
         with mock.patch("measurelog.ui.setup_tab.messagebox") as box:
             box.askyesno.return_value = True
             self.setup.delete_test()
-        self.app.notebook.select(0)
+        self.app.notebook.select(self.app.entry_tab)
         self.app.update()
         self.assertEqual(len(self.app.entry_tab.tests), 3)
 
@@ -226,7 +226,7 @@ class DeleteRunsTests(MultiSelectTestCase):
         extra = [self.app.db.create_run(f"2026-09-{10 + i}", "08:00", f"Round {i}")
                  for i in range(count)]
         self.app.notify("runs_changed")
-        self.app.notebook.select(1)
+        self.app.notebook.select(self.app.runs_tab)
         self.app.update()
         return extra
 

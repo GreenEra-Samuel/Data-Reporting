@@ -87,6 +87,24 @@ class Cell:
 
 
 @dataclass
+class Attachment:
+    """A file kept alongside the data file and tied to a run."""
+
+    id: int | None = None
+    run_id: int | None = None
+    filename: str = ""        # the name it had when it was added
+    stored_name: str = ""     # the name it has inside the files folder
+    size: int = 0
+    source_path: str = ""     # where it came from, for the tooltip
+    note: str = ""
+    added_at: str = ""
+
+    @property
+    def display(self) -> str:
+        return self.filename or self.stored_name
+
+
+@dataclass
 class LongRow:
     """One exported replicate row."""
 

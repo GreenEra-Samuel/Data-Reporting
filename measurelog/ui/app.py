@@ -12,6 +12,7 @@ from ..db import Database
 from . import theme, widgets
 from .entry_tab import EntryTab
 from .export_tab import ExportTab
+from .files_tab import FilesTab
 from .review_tab import ReviewTab
 from .runs_tab import RunsTab
 from .setup_tab import SetupTab
@@ -37,7 +38,13 @@ QUICK_START = """\
 4. Review tab - see one whole run as a tests-by-locations grid, and copy it
    straight into Excel.
 
-5. Export tab - write everything out as an Excel workbook or CSV files for a
+5. Files tab - the app's own file browser. Find a photo, a meter printout or a
+   certificate and click "Add to this run": MeasureLog keeps its own copy, so
+   the paperwork stays with the readings. The same screen imports readings
+   from a CSV or Excel file, showing you exactly what it understood before
+   anything is written.
+
+6. Export tab - write everything out as an Excel workbook or CSV files for a
    date range you choose.
 
 Your data lives in a single file, so you can copy it to another computer or put
@@ -64,8 +71,8 @@ class MeasureLogApp(tk.Tk):
         self.rsd_warning: float | None = 5.0
         self.refresh_settings()
 
-        self._build_menu()
         self._build_tabs()
+        self._build_menu()
         self._bind_shortcuts()
 
         self.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -79,6 +86,7 @@ class MeasureLogApp(tk.Tk):
         self.entry_tab.reload()
         self.runs_tab.reload()
         self.review_tab.reload()
+        self.files_tab.reload()
         self.export_tab.reload()
         if self.first_run:
             self.show_welcome()
@@ -130,6 +138,10 @@ class MeasureLogApp(tk.Tk):
         file_menu = tk.Menu(menubar, tearoff=0)
         file_menu.add_command(label="New run\tCtrl+N", command=lambda: self.entry_tab.new_run())
         file_menu.add_separator()
+        file_menu.add_command(label="Add a file to this run…", command=self.show_files_tab)
+        file_menu.add_command(label="Import readings from a file…",
+                              command=self.start_import)
+        file_menu.add_separator()
         file_menu.add_command(label="Open data folder",
                               command=lambda: self.export_tab.open_folder())
         file_menu.add_command(label="Back up data now", command=lambda: self.export_tab.backup())
@@ -138,7 +150,7 @@ class MeasureLogApp(tk.Tk):
         menubar.add_cascade(label="File", menu=file_menu)
 
         go_menu = tk.Menu(menubar, tearoff=0)
-        for index, name in enumerate(("Entry", "Runs", "Review", "Export", "Setup")):
+        for index, (_tab, name) in enumerate(self.tab_order):
             go_menu.add_command(label=name, command=lambda i=index: self.notebook.select(i))
         menubar.add_cascade(label="Go", menu=go_menu)
 
@@ -156,17 +168,20 @@ class MeasureLogApp(tk.Tk):
         self.entry_tab = EntryTab(self.notebook, self)
         self.runs_tab = RunsTab(self.notebook, self)
         self.review_tab = ReviewTab(self.notebook, self)
+        self.files_tab = FilesTab(self.notebook, self)
         self.export_tab = ExportTab(self.notebook, self)
         self.setup_tab = SetupTab(self.notebook, self)
 
-        for tab, title in (
-            (self.entry_tab, "  Entry  "),
-            (self.runs_tab, "  Runs  "),
-            (self.review_tab, "  Review  "),
-            (self.export_tab, "  Export  "),
-            (self.setup_tab, "  Setup  "),
-        ):
-            self.notebook.add(tab, text=title)
+        self.tab_order = (
+            (self.entry_tab, "Entry"),
+            (self.runs_tab, "Runs"),
+            (self.review_tab, "Review"),
+            (self.files_tab, "Files"),
+            (self.export_tab, "Export"),
+            (self.setup_tab, "Setup"),
+        )
+        for tab, title in self.tab_order:
+            self.notebook.add(tab, text=f"  {title}  ")
 
         self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
 
@@ -199,7 +214,21 @@ class MeasureLogApp(tk.Tk):
         self.entry_tab.focus_first_cell()
 
     def show_entry_tab(self) -> None:
-        self.notebook.select(0)
+        self.select_tab(self.entry_tab)
+
+    def show_files_tab(self) -> None:
+        self.select_tab(self.files_tab)
+
+    def show_setup_tab(self) -> None:
+        self.select_tab(self.setup_tab)
+
+    def select_tab(self, tab) -> None:
+        self.notebook.select(self.notebook.index(tab))
+
+    def start_import(self) -> None:
+        """Take the user to the Files tab with the importer already open."""
+        self.show_files_tab()
+        self.files_tab.import_readings()
 
     # ------------------------------------------------------------ event bus
 
@@ -247,7 +276,7 @@ class MeasureLogApp(tk.Tk):
         buttons = ttk.Frame(frame)
         buttons.pack(fill="x", pady=(12, 0))
         ttk.Button(buttons, text="Go to Setup", style="Accent.TButton",
-                   command=lambda: (window.destroy(), self.notebook.select(4))).pack(side="left")
+                   command=lambda: (window.destroy(), self.show_setup_tab())).pack(side="left")
         ttk.Button(buttons, text="Close", command=window.destroy).pack(side="right")
 
         widgets.center_window(window, 660, 620)

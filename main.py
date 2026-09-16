@@ -64,8 +64,8 @@ def selftest() -> int:
     """Exercise the parts of a packaged build that can silently go missing.
 
     Checks that the database layer, the statistics, the CSV writer, the bundled
-    Excel writer and Tk itself all survived packaging. Prints a line per check;
-    returns 0 only when every one passes.
+    Excel writer, the file store, the importer and Tk itself all survived
+    packaging. Prints a line per check; returns 0 only when every one passes.
     """
     import tempfile
     from pathlib import Path
@@ -96,6 +96,7 @@ def selftest() -> int:
         stored = db.count_values(run_id=run.id)
         assert stored == 3, f"expected 3 readings, stored {stored}"
         state["rows"] = db.fetch_long_rows()
+        state["run_id"] = run.id
         return f"{stored} readings stored"
 
     def check_statistics():
@@ -121,6 +122,48 @@ def selftest() -> int:
         path = exporters.export_excel(workspace / "selftest.xlsx", state["rows"])
         assert path.stat().st_size > 0, "empty workbook"
         return f"{path.stat().st_size} bytes"
+
+    def check_attachments():
+        """Files are copied next to the database, so both halves must work."""
+        from measurelog import files
+        from measurelog.models import Attachment
+
+        db = state["db"]
+        source = workspace / "certificate.pdf"
+        source.write_bytes(b"%PDF-1.4 selftest")
+
+        stored = files.store(source, folder=workspace / "files")
+        attachment = db.add_attachment(Attachment(
+            run_id=state["run_id"], filename=source.name, stored_name=stored.stored_name,
+            size=stored.size))
+        assert db.count_attachments(state["run_id"]) == 1, "attachment was not recorded"
+        assert stored.path.read_bytes() == b"%PDF-1.4 selftest", "the copy is not intact"
+
+        db.delete_attachment(attachment.id)
+        files.discard(stored.stored_name, folder=workspace / "files")
+        assert not stored.path.exists(), "the copy outlived its record"
+        return f"{stored.size} bytes copied, recorded and removed"
+
+    def check_import():
+        """Reading a spreadsheet back into a run."""
+        from measurelog import importers
+
+        db = state["db"]
+        path = workspace / "selftest-readings.csv"
+        path.write_text("Location,Test,Replicate,Value\n"
+                        "Location 1,Test 1,1,7.02\nLocation 1,Test 1,2,7.04\n",
+                        encoding="utf-8")
+
+        tests, locations = db.list_tests(), db.list_locations()
+        table = importers.read_table(path)
+        mapping = importers.guess_mapping(table, tests, locations)
+        plan = importers.build_plan(table, mapping, tests, locations)
+        assert len(plan.ready) == 2, f"read {len(plan.ready)} of 2 readings"
+
+        target = db.create_run("2026-01-02", "08:00", "Round 1", "selftest")
+        written = importers.apply(db, target.id, plan).written
+        assert written == 2, f"wrote {written} of 2 readings"
+        return f"{written} readings read from CSV"
 
     def check_tk():
         import tkinter as tk
@@ -159,6 +202,8 @@ def selftest() -> int:
     record("statistics", check_statistics)
     record("csv export", check_csv)
     record("excel export", check_excel)
+    record("attachments", check_attachments)
+    record("csv import", check_import)
     record("tk toolkit", check_tk)
     record("app icon", check_icon)
 

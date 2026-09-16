@@ -13,12 +13,14 @@ SHA256 checksum is attached if you want to confirm your download is intact.
 
 ### Where your data goes
 
-Everything you enter is saved in a single file:
+Everything you enter is saved in a single file, with any files you have added to
+a run kept beside it:
 
 ```
 Documents\MeasureLog\measurelog.db
+Documents\MeasureLog\files\
 ```
 
-Copy that file to move your records to another computer, or point the app at a
+Copy those to move your records to another computer, or point the app at a
 shared drive so a team works from the same records. The **Export** tab inside
 the app shows you the exact path and can back it up for you.

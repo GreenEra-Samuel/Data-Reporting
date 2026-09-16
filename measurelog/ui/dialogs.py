@@ -298,16 +298,18 @@ class TestDialog(BaseDialog):
 
 
 class NoteDialog(BaseDialog):
-    """Attach a short note to one replicate."""
+    """Attach a short note to one replicate - or to anything else that takes one."""
 
-    def __init__(self, parent, caption: str, note: str = ""):
+    def __init__(self, parent, caption: str, note: str = "", title: str = "Note for this reading",
+                 hint: str = "Notes travel with the value into every export."):
         self._caption = caption
         self._note = note
-        super().__init__(parent, "Note for this reading", 420, 260)
+        self._hint = hint
+        super().__init__(parent, title, 420, 260)
 
     def build(self, parent: ttk.Frame) -> None:
         ttk.Label(parent, text=self._caption, style="SubHeading.TLabel").pack(anchor="w")
-        ttk.Label(parent, text="Notes travel with the value into every export.",
+        ttk.Label(parent, text=self._hint,
                   style="Muted.TLabel").pack(anchor="w", pady=(0, 8))
         self.text = tk.Text(parent, height=5, width=44, wrap="word", relief="solid",
                             borderwidth=1, highlightthickness=0)

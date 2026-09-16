@@ -5,6 +5,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+from .. import files
 from . import widgets
 from .dialogs import RunDialog
 
@@ -52,16 +53,17 @@ class RunsTab(widgets.DeferredRefresh, ttk.Frame):
         holder = ttk.Frame(self)
         holder.pack(fill="both", expand=True)
 
-        columns = ("date", "time", "label", "operator", "values", "notes")
+        columns = ("date", "time", "label", "operator", "values", "files", "notes")
         self.tree = ttk.Treeview(holder, columns=columns, show="headings",
                                  selectmode="extended")
         headings = {
             "date": ("Date", 110), "time": ("Time", 70), "label": ("Run", 150),
-            "operator": ("Operator", 130), "values": ("Readings", 90), "notes": ("Notes", 320),
+            "operator": ("Operator", 130), "values": ("Readings", 90),
+            "files": ("Files", 60), "notes": ("Notes", 300),
         }
         for key, (title, width) in headings.items():
             self.tree.heading(key, text=title)
-            anchor = "center" if key in ("time", "values") else "w"
+            anchor = "center" if key in ("time", "values", "files") else "w"
             self.tree.column(key, width=width, anchor=anchor,
                              stretch=key == "notes")
 
@@ -90,6 +92,7 @@ class RunsTab(widgets.DeferredRefresh, ttk.Frame):
 
     def _populate(self) -> None:
         needle = self.search_var.get().strip().lower()
+        attachments = self.db.attachment_counts()
         self.tree.delete(*self.tree.get_children())
         shown = 0
         for run in self.runs:
@@ -102,7 +105,8 @@ class RunsTab(widgets.DeferredRefresh, ttk.Frame):
             self.tree.insert(
                 "", "end", iid=str(run.id),
                 values=(run.run_date, run.run_time, run.label, run.operator,
-                        run.value_count, run.notes.replace("\n", " ")),
+                        run.value_count, attachments.get(run.id, "") or "",
+                        run.notes.replace("\n", " ")),
                 tags=() if run.value_count else ("empty",),
             )
         total = len(self.runs)
@@ -204,6 +208,7 @@ class RunsTab(widgets.DeferredRefresh, ttk.Frame):
 
         runs = [self.db.get_run(run_id) for run_id in run_ids]
         total = sum(self.db.count_values(run_id=run_id) for run_id in run_ids)
+        attached = sum(self.db.count_attachments(run_id) for run_id in run_ids)
 
         if len(runs) == 1:
             question = f"Delete the run on {runs[0].display}?"
@@ -216,13 +221,17 @@ class RunsTab(widgets.DeferredRefresh, ttk.Frame):
         if not messagebox.askyesno(
             "Delete run" if len(runs) == 1 else "Delete runs",
             f"{question}\n\n"
-            f"{total} reading(s) will be deleted. This cannot be undone.",
+            f"{total} reading(s) will be deleted"
+            + (f", along with {attached} attached file(s)" if attached else "")
+            + ". This cannot be undone.",
             parent=self,
         ):
             return
 
         for run_id in run_ids:
-            self.db.delete_run(run_id)
+            # The rows go with the run; the copies on disk are ours to clear up.
+            for stored_name in self.db.delete_run(run_id):
+                files.discard(stored_name)
         if self.app.current_run_id in run_ids:
             self.app.current_run_id = None
         self.app.notify("runs_changed", source=self)
