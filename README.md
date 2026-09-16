@@ -187,6 +187,35 @@ pyinstaller packaging/MeasureLog.spec --noconfirm --clean
 
 ---
 
+## The app icon
+
+The icon is the Green Era Campus mark with **LAB** underneath, drawn by
+`packaging/make_icon.py` and committed as `icon.ico` (embedded in the .exe) and
+`icon.png` (used for the window itself). Detail is added as the icon grows,
+because a 16-pixel icon carrying three lines of text is just a smudge:
+
+| Size | Shows |
+|---|---|
+| 16, 24 px | the cream tile and the green mark, filling the tile |
+| 32, 48, 64 px | the mark with LAB underneath |
+| 128 px and up | plus the GREEN / ERA / CAMPUS wordmark inside the mark |
+
+To change it, edit the constants at the top of that script — the brand colours,
+the wording (`STRAPLINE = "LAB"`, swap for `"TESTING"`), or the geometry — then:
+
+```bash
+pip install pillow
+python packaging/make_icon.py --preview
+```
+
+`--preview` also writes `icon-preview.png`, every size side by side, so you can
+check the result before committing. The colours there were matched by eye from
+the supplied logo; if you have the exact brand values, put them in `GREEN` and
+`CREAM` and re-run.
+
+The wordmark is set in Montserrat Bold, under the SIL Open Font License — the
+licence travels with the font in `packaging/fonts/`.
+
 ## Upgrading
 
 Replace the old `MeasureLog.exe` with the new one. Your measurements are in a
@@ -235,6 +264,11 @@ measurelog/
     dialogs.py            add/edit dialogs
     widgets.py            scrolling frame, number entry, tooltips
     theme.py              colours and ttk styling
-packaging/                PyInstaller spec, icon, Windows build script
+packaging/
+  make_icon.py            draws the app icon from the Green Era Campus mark
+  icon.ico / icon.png     the committed icon, embedded in the .exe
+  fonts/                  Montserrat Bold (SIL OFL), used to set the icon
+  MeasureLog.spec         PyInstaller recipe
+  build_windows.bat       one-click local build
 tests/                    unit tests and interface tests
 ```

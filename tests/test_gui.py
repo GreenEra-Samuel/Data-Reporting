@@ -233,6 +233,14 @@ class AppTests(unittest.TestCase):
 
     # ---------------------------------------------------------------- tabs
 
+    def test_the_window_gets_the_campus_icon(self):
+        # iconphoto is the route that works cross-platform; if the PNG failed
+        # to load, no image would be held and the window would fall back to
+        # Tk's default feather.
+        self.assertTrue(hasattr(self.app, "_icon_image"))
+        self.assertEqual(self.app._icon_image.width(), 256)
+        self.assertEqual(self.app._icon_image.height(), 256)
+
     def test_every_tab_renders(self):
         for index in range(5):
             self.app.notebook.select(index)

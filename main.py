@@ -131,11 +131,36 @@ def selftest() -> int:
         root.destroy()
         return f"Tk {version}"
 
+    def check_icon():
+        """The icon is a bundled data file, so it can go missing on its own."""
+        import tkinter as tk
+
+        from measurelog import config
+
+        ico = config.resource_path("icon.ico")
+        png = config.resource_path("icon.png")
+        if ico is None or not ico.exists():
+            raise RuntimeError("icon.ico is missing from this build")
+        if png is None or not png.exists():
+            raise RuntimeError("icon.png is missing from this build")
+
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            image = tk.PhotoImage(file=str(png))
+            size = (image.width(), image.height())
+        finally:
+            root.destroy()
+        if size != (256, 256):
+            raise RuntimeError(f"icon.png is {size[0]}x{size[1]}, expected 256x256")
+        return f"icon.ico {ico.stat().st_size} bytes, icon.png {size[0]}x{size[1]}"
+
     record("database", check_database)
     record("statistics", check_statistics)
     record("csv export", check_csv)
     record("excel export", check_excel)
     record("tk toolkit", check_tk)
+    record("app icon", check_icon)
 
     if "db" in state:
         state["db"].close()

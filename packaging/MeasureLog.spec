@@ -13,6 +13,7 @@ from pathlib import Path
 
 ROOT = Path(SPECPATH).resolve().parent
 ICON = ROOT / "packaging" / "icon.ico"
+ICON_PNG = ROOT / "packaging" / "icon.png"
 
 block_cipher = None
 
@@ -20,7 +21,7 @@ a = Analysis(
     [str(ROOT / "main.py")],
     pathex=[str(ROOT)],
     binaries=[],
-    datas=[(str(ICON), ".")],
+    datas=[(str(path), ".") for path in (ICON, ICON_PNG) if path.exists()],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

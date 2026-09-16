@@ -102,12 +102,27 @@ class MeasureLogApp(tk.Tk):
     # --------------------------------------------------------------- chrome
 
     def _set_icon(self) -> None:
-        icon = config.resource_path("icon.ico")
-        if icon and icon.exists():
+        """Put the Green Era Campus mark on the window and taskbar button.
+
+        Both routes are attempted because neither is universal: iconbitmap
+        wants a .ico and is Windows-only, while Tk's reading of
+        PNG-compressed .ico files is unreliable - so the PNG is applied
+        second and wins where it loads.
+        """
+        ico = config.resource_path("icon.ico")
+        if ico and ico.exists():
             try:
-                self.iconbitmap(default=str(icon))
+                self.iconbitmap(default=str(ico))
             except tk.TclError:
                 pass  # Not supported on this platform; harmless.
+
+        png = config.resource_path("icon.png")
+        if png and png.exists():
+            try:
+                self._icon_image = tk.PhotoImage(file=str(png))
+                self.iconphoto(True, self._icon_image)
+            except tk.TclError:
+                pass
 
     def _build_menu(self) -> None:
         menubar = tk.Menu(self)
