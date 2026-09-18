@@ -8,7 +8,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from .. import config, exporters, files
-from . import widgets
+from . import theme, widgets
 
 
 class ExportTab(widgets.DeferredRefresh, ttk.Frame):
@@ -105,11 +105,14 @@ class ExportTab(widgets.DeferredRefresh, ttk.Frame):
 
         ttk.Label(
             box,
-            text="Everything you enter lives in this one file. Copy it to move your data to "
-                 "another computer, or keep it on a shared drive so several people see the "
-                 "same records.",
+            text="Everything you enter lives in this one file, alongside any documents "
+                 "attached to your runs. Copy the folder to move your records to another "
+                 "computer. It can sit on a network drive if only one person has the app "
+                 "open at a time - but not in a sync folder; see below.",
             style="Muted.TLabel", wraplength=760, justify="left",
         ).pack(anchor="w", pady=(8, 10))
+
+        self._build_sync_warning(box)
 
         row = ttk.Frame(box)
         row.pack(fill="x")
@@ -119,6 +122,37 @@ class ExportTab(widgets.DeferredRefresh, ttk.Frame):
 
         self.storage_note = ttk.Label(box, text="", style="Muted.TLabel")
         self.storage_note.pack(anchor="w", pady=(10, 0))
+
+    def _build_sync_warning(self, box: ttk.Labelframe) -> None:
+        """Warn when the data folder sits inside OneDrive, Drive or Dropbox.
+
+        Worth saying loudly: Windows often redirects Documents into OneDrive,
+        so this can be true without anyone having chosen it.
+        """
+        service = config.sync_service_for()
+        if service is None:
+            return
+
+        warning = tk.Frame(box, background=theme.BAD_BG, padx=12, pady=10,
+                           highlightthickness=1, highlightbackground=theme.BAD_FG)
+        warning.pack(fill="x", pady=(0, 10))
+        tk.Label(
+            warning, text=f"\u26a0  Your data folder is inside {service}",
+            background=theme.BAD_BG, foreground=theme.BAD_FG, anchor="w",
+            font=("TkDefaultFont", 9, "bold"),
+        ).pack(fill="x")
+        tk.Label(
+            warning,
+            text=f"{service} copies the whole database file and knows nothing about the "
+                 "locks the app uses to keep it consistent. If two computers ever sync the "
+                 "same folder, your readings can be lost or corrupted.\n\n"
+                 "Safe on one computer that nobody else syncs to. To move it, put a file "
+                 "called datadir.txt next to MeasureLog.exe containing a folder path "
+                 "outside the synced area.\n\n"
+                 "Exports are unaffected - saving a workbook into a synced folder is fine.",
+            background=theme.BAD_BG, foreground=theme.TEXT, anchor="w", justify="left",
+            wraplength=720,
+        ).pack(fill="x", pady=(4, 0))
 
     # ---------------------------------------------------------------- data
 

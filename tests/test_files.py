@@ -116,7 +116,9 @@ class ListingTests(unittest.TestCase):
         self.folder = tempfile.TemporaryDirectory()
         self.root = Path(self.folder.name)
         (self.root / "sub").mkdir()
-        (self.root / "readings.csv").write_text("a,b\n")
+        # Written as bytes, not text: on Windows write_text turns "\n" into
+        # "\r\n", which would make this 5 bytes and break the size assertion.
+        (self.root / "readings.csv").write_bytes(b"a,b\n")
         (self.root / "photo.jpg").write_bytes(b"\xff\xd8\xff")
         (self.root / ".hidden").write_text("secret")
 

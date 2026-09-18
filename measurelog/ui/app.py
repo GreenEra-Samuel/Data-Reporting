@@ -48,7 +48,9 @@ QUICK_START = """\
    date range you choose.
 
 Your data lives in a single file, so you can copy it to another computer or put
-it on a shared drive. The Export tab shows you exactly where it is.
+it on a network drive. Keep it out of OneDrive, Google Drive or Dropbox
+though - sync tools can corrupt a database they copy behind your back. The
+Export tab shows you where it is and warns you if it is somewhere risky.
 """
 
 
@@ -76,11 +78,14 @@ class MeasureLogApp(tk.Tk):
         self._bind_shortcuts()
 
         self.protocol("WM_DELETE_WINDOW", self.on_close)
-        self.after(50, self._startup)
+        # Held so it can be cancelled: closing the window inside this delay
+        # would otherwise run the callback against destroyed widgets.
+        self._startup_job = self.after(50, self._startup)
 
     # ----------------------------------------------------------- lifecycle
 
     def _startup(self) -> None:
+        self._startup_job = None
         last_run = self.db.list_runs(limit=1)
         self.current_run_id = last_run[0].id if last_run else None
         self.entry_tab.reload()
@@ -92,6 +97,12 @@ class MeasureLogApp(tk.Tk):
             self.show_welcome()
 
     def on_close(self) -> None:
+        if self._startup_job is not None:
+            try:
+                self.after_cancel(self._startup_job)
+            except tk.TclError:
+                pass
+            self._startup_job = None
         try:
             self.entry_tab.commit_focused()
         except Exception:

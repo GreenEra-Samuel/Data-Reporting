@@ -86,6 +86,59 @@ class BackupTests(unittest.TestCase):
         self.assertLessEqual(len(list(folder.glob("measurelog-*.db"))), 5)
 
 
+class SyncFolderTests(unittest.TestCase):
+    """Spotting a data folder a sync client would fight the app over."""
+
+    def test_onedrive_is_recognised(self):
+        self.assertEqual(
+            config.sync_service_for(r"C:\Users\sam\OneDrive\Documents\MeasureLog"),
+            "OneDrive")
+
+    def test_a_workspace_named_onedrive_folder_is_recognised(self):
+        # Redirected Documents usually look like this, and it is the most
+        # common way to end up synced without choosing to be.
+        self.assertEqual(
+            config.sync_service_for(
+                r"C:\Users\sam\OneDrive - Green Era Campus\Documents\MeasureLog"),
+            "OneDrive")
+
+    def test_google_drive_in_both_its_shapes(self):
+        self.assertEqual(config.sync_service_for(r"G:\My Drive\MeasureLog"), "Google Drive")
+        self.assertEqual(
+            config.sync_service_for(r"C:\Users\sam\Google Drive\MeasureLog"), "Google Drive")
+
+    def test_dropbox_on_either_platform(self):
+        self.assertEqual(config.sync_service_for(r"C:\Users\sam\Dropbox\MeasureLog"),
+                         "Dropbox")
+        self.assertEqual(config.sync_service_for("/home/sam/Dropbox/MeasureLog"), "Dropbox")
+
+    def test_an_ordinary_documents_folder_is_fine(self):
+        self.assertIsNone(config.sync_service_for(r"C:\Users\sam\Documents\MeasureLog"))
+
+    def test_a_network_share_is_fine(self):
+        # A real network drive is a different thing entirely: it is allowed.
+        self.assertIsNone(config.sync_service_for(r"\\fileserver\lab\measurelog"))
+
+    def test_folders_that_merely_start_with_a_service_name_are_left_alone(self):
+        for path in (r"C:\Users\sam\Documents\OneDriveNotes\MeasureLog",
+                     r"C:\Users\sam\Documents\Driveway\MeasureLog",
+                     r"C:\Users\sam\Documents\Boxes\MeasureLog"):
+            with self.subTest(path=path):
+                self.assertIsNone(config.sync_service_for(path))
+
+    def test_matching_ignores_case(self):
+        self.assertEqual(config.sync_service_for(r"C:\Users\sam\ONEDRIVE\MeasureLog"),
+                         "OneDrive")
+
+    def test_it_checks_the_live_data_folder_when_asked_for_nothing(self):
+        import os
+        os.environ["MEASURELOG_DATA_DIR"] = r"C:\Users\sam\Dropbox\MeasureLog"
+        try:
+            self.assertEqual(config.sync_service_for(), "Dropbox")
+        finally:
+            os.environ.pop("MEASURELOG_DATA_DIR", None)
+
+
 class ResourceTests(unittest.TestCase):
     def test_missing_resource_returns_none(self):
         self.assertIsNone(config.resource_path("definitely-not-here.xyz"))

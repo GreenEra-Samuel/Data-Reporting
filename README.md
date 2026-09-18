@@ -44,7 +44,7 @@ git tag, or one double-click on Windows.
 | **Range checks** | Readings outside a test's acceptable range turn red immediately — not after you export. |
 | **Spread check** | If your replicates disagree more than a threshold you set, the row says *Check spread*. Tests can carry their own limit — pH uses the 2% RSD its SOP requires — and anything without one falls back to the app-wide setting. |
 | **Exports** | Excel workbook or CSV, for any date range. |
-| **Your data** | One file you can copy, back up, or keep on a shared drive. |
+| **Your data** | One file you can copy, back up, or put on a network drive — though not in a sync folder; the app warns you if it is. |
 
 ---
 
@@ -163,6 +163,30 @@ out it can read back in — useful for moving a day's readings between computers
 
 ---
 
+## Installing on lab PCs
+
+Windows shows a blue *"Windows protected your PC"* box the first time it sees a
+newly built program. It means the file is new and not commercially signed — not
+that anything is wrong with it. Two ways past it:
+
+**Avoid it entirely (best for a lab).** Copy `MeasureLog.exe` to the machines
+over a network share or on a USB stick instead of downloading it in a browser.
+Files that did not arrive from the internet carry no "mark of the web", so
+SmartScreen never asks.
+
+**Or unblock it once per machine.** Right-click `MeasureLog.exe` → **Properties**
+→ tick **Unblock** → **OK**, before the first launch. Cleaner than clicking
+through *More info → Run anyway* every time.
+
+If your IT team manages the machines, give them the `MeasureLog.exe.sha256`
+file published with each release — an allow-list entry by hash is exactly what
+they will ask for.
+
+There is nothing to install beyond the one file: no Python, no setup program,
+no admin rights.
+
+---
+
 ## Where your measurements live
 
 Every reading sits in one SQLite file, with the files you have added beside it:
@@ -179,12 +203,32 @@ demand. The app also keeps a dated backup automatically, once a day, in
 **Moving to another computer:** copy `measurelog.db` to the same folder there —
 and the `files` folder with it, if you have added any.
 
-**A shared drive, so a team sees the same records:** put `datadir.txt` next to
+**A network drive, so a team sees the same records:** put `datadir.txt` next to
 `MeasureLog.exe` containing the folder path, for example:
 
 ```
 \\fileserver\lab\measurelog
 ```
+
+Have one person in the app at a time. The database is not built for two people
+typing into it at once.
+
+> ### ⚠️ Not OneDrive, Google Drive or Dropbox
+>
+> A *network drive* is fine. A *sync folder* is not. Sync clients copy the
+> whole database file and know nothing about the locks the app uses to keep it
+> consistent, so a folder synced between two machines can end up corrupted.
+>
+> This catches people out because Windows often redirects **Documents** into
+> OneDrive — which puts the default data folder inside a sync folder without
+> anyone choosing it. The Export tab checks for this and warns you by name if
+> it finds it. It is safe enough on a single computer nobody else syncs to; to
+> move it, point `datadir.txt` somewhere outside the synced area.
+>
+> **Exports are unaffected.** Saving a workbook or CSV into a synced folder is
+> perfectly fine — those are written once and never held open. If all you want
+> is your spreadsheets in Drive, export them straight into the Drive folder and
+> leave the database where it is.
 
 **From a USB stick:** put an empty file called `portable.flag` next to
 `MeasureLog.exe`. Data then lives in a `MeasureLog-Data` folder beside the

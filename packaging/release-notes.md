@@ -22,5 +22,10 @@ Documents\MeasureLog\files\
 ```
 
 Copy those to move your records to another computer, or point the app at a
-shared drive so a team works from the same records. The **Export** tab inside
-the app shows you the exact path and can back it up for you.
+network drive so a team works from the same records, one person at a time.
+
+**Keep it out of OneDrive, Google Drive and Dropbox.** Sync clients copy the
+whole database and ignore the locks the app relies on, so a synced folder can
+end up corrupted. Exports are fine there - it is only the live database that
+minds. The **Export** tab shows the exact path, warns you if it is somewhere
+risky, and can back it up for you.

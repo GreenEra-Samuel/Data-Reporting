@@ -13,6 +13,7 @@ Resolution order for the data folder:
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import sys
 from datetime import datetime
@@ -22,6 +23,30 @@ from . import APP_NAME
 
 DB_FILENAME = "measurelog.db"
 BACKUP_KEEP = 15
+
+# Folder names that mean a sync client owns everything underneath. The database
+# must not live in one: sync tools copy the whole file and know nothing about
+# the locks SQLite relies on, so a folder synced between two machines can be
+# left corrupt. This is not a hypothetical - Windows often redirects Documents
+# into OneDrive, which silently puts the default data folder inside a sync
+# folder without anyone choosing it.
+#
+# Matched against each part of the path, case-insensitively. Entries ending in
+# a space match by prefix, so "OneDrive - Green Era Campus" is caught too.
+SYNC_FOLDERS: tuple[tuple[str, str], ...] = (
+    ("onedrive", "OneDrive"),
+    ("google drive", "Google Drive"),
+    ("googledrive", "Google Drive"),
+    ("my drive", "Google Drive"),
+    ("shared drives", "Google Drive"),
+    ("dropbox", "Dropbox"),
+    ("box sync", "Box"),
+    ("icloud drive", "iCloud Drive"),
+    ("icloud~", "iCloud Drive"),
+    ("creative cloud files", "Creative Cloud"),
+    ("nextcloud", "Nextcloud"),
+    ("pclouddrive", "pCloud"),
+)
 
 
 def is_frozen() -> bool:
@@ -73,6 +98,27 @@ def data_dir() -> Path:
     documents = home / "Documents"
     base = documents if documents.is_dir() else home
     return base / APP_NAME
+
+
+def sync_service_for(path: Path | str | None = None) -> str | None:
+    """Name the sync service holding ``path``, or None if nothing owns it.
+
+    Used to warn before the database ends up somewhere a sync client will
+    overwrite it behind the app's back. Exports are fine in a synced folder -
+    they are written once and never held open - so this is only ever applied
+    to the data folder.
+    """
+    target = Path(path) if path is not None else data_dir()
+    # Split on both separators rather than trusting Path.parts: a Windows path
+    # examined on any other platform comes back as a single component, which
+    # would quietly match nothing.
+    for part in re.split(r"[\\/]+", str(target)):
+        cleaned = part.strip().lower()
+        for marker, service in SYNC_FOLDERS:
+            if cleaned == marker or cleaned.startswith(f"{marker} ") or \
+                    cleaned.startswith(f"{marker}-") or cleaned.startswith(marker + "_"):
+                return service
+    return None
 
 
 def ensure_data_dir() -> Path:

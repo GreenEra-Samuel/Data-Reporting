@@ -233,6 +233,15 @@ class AppTests(unittest.TestCase):
 
     # ---------------------------------------------------------------- tabs
 
+    def test_closing_immediately_does_not_error(self):
+        # The startup work runs on a timer; closing inside that window used to
+        # leave the callback running against destroyed widgets.
+        from measurelog.ui.app import MeasureLogApp
+
+        quick = MeasureLogApp()
+        quick.on_close()                     # no update(), so the timer is still pending
+        self.assertIsNone(quick._startup_job)
+
     def test_the_window_gets_the_campus_icon(self):
         # iconphoto is the route that works cross-platform; if the PNG failed
         # to load, no image would be held and the window would fall back to
