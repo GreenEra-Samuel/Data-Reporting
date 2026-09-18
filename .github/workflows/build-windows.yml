@@ -46,6 +46,12 @@ jobs:
         # xvfb gives the interface tests a display to draw on.
         run: xvfb-run -a python -m unittest discover -s tests -v
 
+      - name: Check for Windows file-locking mistakes
+        # Windows will not delete a file that is still open, Linux will. This
+        # catches that here, on the job that gates the Windows build, instead
+        # of spending a Windows runner discovering it.
+        run: xvfb-run -a python tools/audit_windows_locks.py
+
   build:
     name: Build MeasureLog.exe
     needs: test

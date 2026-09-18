@@ -352,6 +352,17 @@ The interface tests drive the real widgets — typing into cells, navigating,
 switching locations and tabs, walking the file browser through folders and
 importing a spreadsheet — and skip themselves when there is no display.
 
+Because the app ships for Windows but is usually tested on Linux, CI runs one
+extra check:
+
+```bash
+python tools/audit_windows_locks.py
+```
+
+Windows refuses to delete a file that is still open; Linux allows it. So a test
+that tears down its temporary folder without closing the database passes
+locally and fails the Windows build. This reports those before that happens.
+
 ### Layout
 
 ```
@@ -385,4 +396,5 @@ packaging/
   MeasureLog.spec         PyInstaller recipe
   build_windows.bat       one-click local build
 tests/                    unit tests and interface tests
+tools/                    developer checks that are not part of the suite
 ```
